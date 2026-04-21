@@ -1,3 +1,4 @@
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -6,13 +7,24 @@ import {
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  // Pass the FastifyAdapter to the factory
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter()
+    new FastifyAdapter(),
   );
 
-  // The '0.0.0.0' is critical for Fastify
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
+  );
+
+  app.setGlobalPrefix('api/v1');
+
   await app.listen(3000, '0.0.0.0');
 }
 bootstrap();
