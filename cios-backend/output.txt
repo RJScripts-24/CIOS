@@ -1,0 +1,1700 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.env.example
+.gitignore
+.prettierrc
+docs/CHANGELOG.md
+eslint.config.mjs
+nest-cli.json
+package.json
+prisma.config.ts
+prisma/migrations/20260421185014_add_users_and_refresh_tokens/migration.sql
+prisma/migrations/migration_lock.toml
+prisma/schema.prisma
+src/app.controller.ts
+src/app.module.ts
+src/app.service.ts
+src/main.ts
+src/modules/auth/auth.controller.ts
+src/modules/auth/auth.module.ts
+src/modules/auth/auth.service.spec.ts
+src/modules/auth/auth.service.ts
+src/modules/auth/decorators/current-user.decorator.ts
+src/modules/auth/decorators/public.decorator.ts
+src/modules/auth/decorators/roles.decorator.ts
+src/modules/auth/dto/login.dto.ts
+src/modules/auth/dto/refresh-token.dto.ts
+src/modules/auth/dto/register.dto.ts
+src/modules/auth/guards/jwt-auth.guard.ts
+src/modules/auth/guards/roles.guard.ts
+src/modules/auth/interfaces/auth-response.interface.ts
+src/modules/auth/interfaces/jwt-payload.interface.ts
+src/modules/auth/strategies/jwt.strategy.ts
+src/modules/auth/strategies/refresh.strategy.ts
+src/prisma/prisma.module.ts
+src/prisma/prisma.service.ts
+tsconfig.build.json
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".env.example">
+DATABASE_URL=postgresql://user:password@localhost:5432/cios
+
+JWT_ACCESS_SECRET=your-super-secret-access-key-min-32-chars
+JWT_REFRESH_SECRET=your-super-secret-refresh-key-min-32-chars
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Session idle timeout (ms) - 4 hours per PRD spec
+SESSION_IDLE_TIMEOUT_MS=14400000
+</file>
+
+<file path=".gitignore">
+# compiled output
+/dist
+/node_modules
+/build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+/coverage
+/.nyc_output
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# temp directory
+.temp
+.tmp
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports (https://nodejs.org/api/report.html)
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+/src/generated/prisma
+</file>
+
+<file path=".prettierrc">
+{
+  "singleQuote": true,
+  "trailingComma": "all"
+}
+</file>
+
+<file path="docs/CHANGELOG.md">
+# CIOS Backend — Change Log
+
+## Auth Module Implementation
+**Date:** 22 April 2026
+
+**Status:** ✅ Complete & Tested
+
+---
+
+## Summary of Changes
+
+This document records all changes made to the CIOS backend codebase to implement the Authentication & Role-Based Access Control system (PRD Feature F1).
+
+---
+
+## 1. Database Schema Changes
+
+### New File: `prisma/schema.prisma`
+Replaced the placeholder `User` model with the full production schema.
+
+**New `UserRole` enum:**
+```
+admin | project_owner | team_member
+```
+
+**New `users` table:**
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | gen_random_uuid() |
+| workspace_id | UUID (nullable) | Future FK to workspaces |
+| email | TEXT UNIQUE NOT NULL | Login identifier, normalised to lowercase |
+| password_hash | TEXT (nullable) | Bcrypt hashed (rounds=12). Null for SSO users |
+| full_name | TEXT (nullable) | Display name |
+| avatar_url | TEXT (nullable) | Profile image |
+| role | UserRole NOT NULL | Default: team_member |
+| is_active | BOOLEAN | Default: true. Checked on every authenticated request |
+| default_model | TEXT (nullable) | User's AI model preference |
+| view_preferences | JSONB | Default: {}. Stores UI sort/group/filter state |
+| created_at | TIMESTAMP | Auto-set |
+| updated_at | TIMESTAMP | Auto-updated |
+
+**New `refresh_tokens` table:**
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | gen_random_uuid() |
+| user_id | UUID FK | CASCADE delete when user deleted |
+| token_hash | TEXT UNIQUE | Hashed refresh token — never stored in plaintext |
+| expires_at | TIMESTAMP | Derived from JWT_REFRESH_EXPIRES_IN env var |
+| created_at | TIMESTAMP | Auto-set |
+| is_revoked | BOOLEAN | Default: false. Set true on logout or rotation |
+
+### New Migration
+`prisma/migrations/20260421185014_add_users_and_refresh_tokens/migration.sql`
+
+---
+
+## 2. New Files Created
+
+### `src/modules/auth/` — Complete Auth Module
+
+```
+src/modules/auth/
+├── auth.module.ts              — NestJS module wiring
+├── auth.controller.ts          — Route handlers for all 5 endpoints
+├── auth.service.ts             — Business logic, token issuance
+├── auth.service.spec.ts        — 10 unit tests (all mocked)
+├── decorators/
+│   ├── current-user.decorator.ts  — Extracts user from Fastify request
+│   ├── public.decorator.ts        — @Public() bypasses global guard
+│   └── roles.decorator.ts         — @Roles() for RBAC
+├── dto/
+│   ├── register.dto.ts            — Email, password (complexity), optional name
+│   ├── login.dto.ts               — Email, password
+│   └── refresh-token.dto.ts       — refresh_token string
+├── guards/
+│   ├── jwt-auth.guard.ts          — JWT guard with @Public() bypass
+│   └── roles.guard.ts             — RBAC guard using @Roles() decorator
+├── interfaces/
+│   ├── auth-response.interface.ts — Token pair + user shape
+│   └── jwt-payload.interface.ts   — JWT claims: sub, email, role, workspace_id
+└── strategies/
+    ├── jwt.strategy.ts            — Validates access token, checks is_active
+    └── refresh.strategy.ts        — Validates refresh token from request body
+```
+
+### `.env.example`
+Documents all required environment variables.
+
+---
+
+## 3. Modified Files
+
+### `src/app.module.ts`
+- Added `ConfigModule.forRoot({ isGlobal: true })` — makes env vars available everywhere
+- Added `AuthModule` import
+- Registered `JwtAuthGuard` as a global `APP_GUARD` — all routes require authentication by default; only routes decorated with `@Public()` are exempt
+
+### `src/app.controller.ts`
+- Added `@Public()` decorator to the health check `GET /` route so it remains accessible without a token
+
+### `src/main.ts`
+- Added global `ValidationPipe` with `whitelist: true`, `forbidNonWhitelisted: true`, `transform: true` — rejects any unknown fields and auto-validates DTOs
+- Added `app.setGlobalPrefix('api/v1')` — all routes are prefixed
+
+---
+
+## 4. API Endpoints
+
+Base URL: `http://localhost:3000/api/v1`
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|---------------|-------------|
+| POST | /auth/register | ❌ Public | Create new user. Returns token pair + user object |
+| POST | /auth/login | ❌ Public | Login. Returns token pair + user object |
+| POST | /auth/refresh | ❌ Public | Rotate refresh token. Returns new token pair |
+| POST | /auth/logout | ✅ JWT | Revoke current refresh token |
+| GET | /auth/me | ✅ JWT | Get authenticated user's profile |
+
+### Request/Response Examples
+
+**Register — POST /api/v1/auth/register**
+```json
+// Request body
+{
+  "email": "user@example.com",
+  "password": "SecurePass1",
+  "full_name": "Jane Doe"
+}
+
+// Response (201)
+{
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "full_name": "Jane Doe",
+    "role": "team_member",
+    "avatar_url": null,
+    "default_model": null
+  }
+}
+```
+
+**Login — POST /api/v1/auth/login**
+```json
+// Request body
+{ "email": "user@example.com", "password": "SecurePass1" }
+
+// Response (200) — same shape as register
+```
+
+**Me — GET /api/v1/auth/me**
+```
+Authorization: Bearer <access_token>
+
+// Response (200)
+{
+  "id": "uuid",
+  "email": "user@example.com",
+  "full_name": "Jane Doe",
+  "role": "team_member",
+  "avatar_url": null,
+  "default_model": null,
+  "view_preferences": {},
+  "workspace_id": null,
+  "is_active": true,
+  "created_at": "2026-04-22T..."
+}
+```
+
+---
+
+## 5. Security Implementation
+
+| Requirement | Implementation |
+|-------------|----------------|
+| Password hashing | bcrypt with 12 rounds (never reducible) |
+| Token storage | Refresh tokens stored as bcrypt hashes — never plaintext |
+| Token rotation | Every `/refresh` call revokes the old token and issues a new pair |
+| Timing-attack protection | Bcrypt hash runs even when user is not found during login |
+| Global route protection | `APP_GUARD` — all routes require JWT unless `@Public()` |
+| Per-request `is_active` check | `JwtStrategy.validate()` checks DB on every request |
+| DTO validation | `whitelist: true` strips unknown fields, `forbidNonWhitelisted` rejects them |
+| Password complexity | Min 8 chars, max 72 chars, requires uppercase + lowercase + digit |
+| Email normalisation | Lowercased and trimmed before storing or querying |
+
+---
+
+## 6. Environment Variables
+
+```env
+DATABASE_URL=postgresql://user:password@localhost:5432/cios
+JWT_ACCESS_SECRET=<min 32 chars, random>
+JWT_REFRESH_SECRET=<min 32 chars, random, different from access>
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+SESSION_IDLE_TIMEOUT_MS=14400000
+```
+
+---
+
+## 7. Test Results
+
+> Captured: 22 April 2026
+
+```
+> cios@0.0.1 test
+> jest --verbose
+
+node.exe : PASS src/modules/auth/auth.service.spec.ts
+At line:1 char:1
++ & "C:\Program Files\nodejs\node.exe" "C:\Program Files\nodejs\node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PASS src/module...service.spec.ts 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  AuthService
+    register()
+      ΓêÜ should throw ConflictException if email already exists (72 ms)
+      ΓêÜ should create a new user and return tokens + user (14 ms)
+      ΓêÜ should normalise email to lowercase (13 ms)
+    login()
+      ΓêÜ should throw UnauthorizedException if user not found (9 ms)
+      ΓêÜ should throw UnauthorizedException if password is wrong (8 ms)
+      ΓêÜ should throw UnauthorizedException if user is inactive (13 ms)
+      ΓêÜ should return tokens and user on valid credentials (5 ms)
+    logout()
+      ΓêÜ should silently succeed even if token not found (7 ms)
+    getMe()
+      ΓêÜ should throw NotFoundException if user not found (9 ms)
+      ΓêÜ should return user data if found (4 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        2.95 s, estimated 3 s
+Ran all test suites.
+
+
+========== TypeScript Compile Check ==========
+
+
+[TS Check complete]
+```
+
+---
+
+## 8. Dependencies Added
+
+**Production:**
+- `@nestjs/jwt` — JWT signing and verification
+- `@nestjs/passport` — Passport.js integration for NestJS
+- `@nestjs/config` — ConfigModule for env var management
+- `passport` — Authentication middleware
+- `passport-jwt` — JWT Passport strategy
+- `passport-local` — Local Passport strategy
+- `bcrypt` — Password hashing
+- `class-validator` — DTO field validation
+- `class-transformer` — DTO transformation
+
+**Dev:**
+- `@types/bcrypt`
+- `@types/passport-jwt`
+- `@types/passport-local`
+
+---
+
+## 9. What Was NOT Built (Per PRD Phase 1 Spec)
+
+As per PRD Section 8.8 "What NOT to Build in Phase 1":
+- Google SSO (password_hash is nullable to support it in future; OAuth flow deferred)
+- Email verification on signup (deferred to Phase 2)
+- Password reset flow (deferred to Phase 2)
+- Session idle-timeout enforcement (SESSION_IDLE_TIMEOUT_MS env var is documented for future frontend implementation)
+
+---
+
+*Document generated: 22 April 2026*
+*CIOS PRD v3.0 — Feature F1: Authentication & Role-Based Access Control*
+</file>
+
+<file path="eslint.config.mjs">
+// @ts-check
+import eslint from '@eslint/js';
+import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
+import globals from 'globals';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  {
+    ignores: ['eslint.config.mjs'],
+  },
+  eslint.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked,
+  eslintPluginPrettierRecommended,
+  {
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+      sourceType: 'commonjs',
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-floating-promises': 'warn',
+      '@typescript-eslint/no-unsafe-argument': 'warn',
+      "prettier/prettier": ["error", { endOfLine: "auto" }],
+    },
+  },
+);
+</file>
+
+<file path="nest-cli.json">
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "compilerOptions": {
+    "deleteOutDir": true
+  }
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "cios",
+  "version": "0.0.1",
+  "description": "",
+  "author": "",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "nest build",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main",
+    "lint": "eslint \"{src,apps,libs}/**/*.ts\" --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
+    "@nestjs/platform-fastify": "^11.0.20",
+    "@prisma/adapter-pg": "^7.7.0",
+    "@prisma/client": "^7.7.0",
+    "bcrypt": "^6.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "passport-local": "^1.0.0",
+    "pg": "^8.20.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.2.0",
+    "@eslint/js": "^9.18.0",
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.0.1",
+    "@types/bcrypt": "^6.0.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.0",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/passport-local": "^1.0.38",
+    "@types/pg": "^8.20.0",
+    "@types/supertest": "^7.0.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "globals": "^17.0.0",
+    "jest": "^30.0.0",
+    "prettier": "^3.4.2",
+    "prisma": "^7.7.0",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.5",
+    "ts-loader": "^9.5.2",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
+  },
+  "overrides": {
+    "fastify": "^5.8.5"
+  }
+}
+</file>
+
+<file path="prisma.config.ts">
+import "dotenv/config";
+import { defineConfig } from "@prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: {
+    path: "prisma/migrations",
+  },
+  datasource: {
+    url: process.env.DATABASE_URL,
+  },
+});
+</file>
+
+<file path="prisma/migrations/20260421185014_add_users_and_refresh_tokens/migration.sql">
+-- CreateEnum
+CREATE TYPE "UserRole" AS ENUM ('admin', 'project_owner', 'team_member');
+
+-- CreateTable
+CREATE TABLE "users" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "workspace_id" UUID,
+    "email" TEXT NOT NULL,
+    "password_hash" TEXT,
+    "full_name" TEXT,
+    "avatar_url" TEXT,
+    "role" "UserRole" NOT NULL DEFAULT 'team_member',
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "default_model" TEXT,
+    "view_preferences" JSONB DEFAULT '{}',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "refresh_tokens" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "user_id" UUID NOT NULL,
+    "token_hash" TEXT NOT NULL,
+    "expires_at" TIMESTAMP(3) NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "is_revoked" BOOLEAN NOT NULL DEFAULT false,
+
+    CONSTRAINT "refresh_tokens_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "refresh_tokens_token_hash_key" ON "refresh_tokens"("token_hash");
+
+-- AddForeignKey
+ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+</file>
+
+<file path="prisma/migrations/migration_lock.toml">
+# Please do not edit this file manually
+# It should be added in your version-control system (e.g., Git)
+provider = "postgresql"
+</file>
+
+<file path="prisma/schema.prisma">
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  admin
+  project_owner
+  team_member
+}
+
+model User {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id     String?  @db.Uuid
+  email            String   @unique
+  password_hash    String?
+  full_name        String?
+  avatar_url       String?
+  role             UserRole @default(team_member)
+  is_active        Boolean  @default(true)
+  default_model    String?
+  view_preferences Json?    @default("{}")
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+
+  refresh_tokens   RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  token_hash String   @unique
+  expires_at DateTime
+  created_at DateTime @default(now())
+  is_revoked Boolean  @default(false)
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+</file>
+
+<file path="src/app.controller.ts">
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+import { Public } from './modules/auth/decorators/public.decorator';
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Public()
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+}
+</file>
+
+<file path="src/app.module.ts">
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule } from '@nestjs/config';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    PrismaModule,
+    AuthModule,
+  ],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+  ],
+})
+export class AppModule {}
+</file>
+
+<file path="src/app.service.ts">
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  getHello(): string {
+    return 'Hello World!';
+  }
+}
+</file>
+
+<file path="src/main.ts">
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter(),
+  );
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
+  );
+
+  app.setGlobalPrefix('api/v1');
+
+  await app.listen(3000, '0.0.0.0');
+}
+bootstrap();
+</file>
+
+<file path="src/modules/auth/auth.controller.ts">
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { AuthService } from './auth.service';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { Public } from './decorators/public.decorator';
+import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RegisterDto } from './dto/register.dto';
+
+@Controller('auth')
+export class AuthController {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  @Public()
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
+  }
+
+  @Public()
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(@Body() dto: LoginDto) {
+    return this.authService.login(dto);
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Body() dto: RefreshTokenDto) {
+    const payload = await this.decodeRefreshToken(dto.refresh_token);
+    return this.authService.refreshTokens(payload.sub, dto.refresh_token);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(
+    @CurrentUser() user: { id: string },
+    @Body() dto: RefreshTokenDto,
+  ) {
+    await this.authService.logout(user.id, dto.refresh_token);
+  }
+
+  @Get('me')
+  async me(@CurrentUser() user: { id: string }) {
+    return this.authService.getMe(user.id);
+  }
+
+  private async decodeRefreshToken(token: string): Promise<{ sub: string }> {
+    try {
+      const payload = await this.jwtService.verifyAsync<{ sub: string }>(token, {
+        secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+      });
+
+      if (!payload?.sub) {
+        throw new UnauthorizedException('Invalid refresh token payload');
+      }
+
+      return payload;
+    } catch {
+      throw new UnauthorizedException('Malformed or invalid refresh token');
+    }
+  }
+}
+</file>
+
+<file path="src/modules/auth/auth.module.ts">
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { StringValue } from 'ms';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { RefreshStrategy } from './strategies/refresh.strategy';
+
+@Module({
+  imports: [
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        signOptions: {
+          expiresIn: (config.get<string>('JWT_ACCESS_EXPIRES_IN') ??
+            '15m') as StringValue,
+        },
+      }),
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy, RefreshStrategy, JwtAuthGuard, RolesGuard],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule],
+})
+export class AuthModule {}
+</file>
+
+<file path="src/modules/auth/auth.service.spec.ts">
+import {
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../../prisma/prisma.service';
+import { AuthService } from './auth.service';
+
+jest.mock('bcrypt', () => ({
+  hash: jest.fn().mockResolvedValue('hashed_value'),
+  compare: jest.fn(),
+}));
+
+const mockUser = {
+  id: 'uuid-1234',
+  email: 'test@example.com',
+  password_hash: 'hashed_value',
+  full_name: 'Test User',
+  role: 'team_member',
+  avatar_url: null,
+  default_model: null,
+  workspace_id: null,
+  is_active: true,
+  created_at: new Date(),
+};
+
+const mockPrismaService = {
+  user: {
+    findUnique: jest.fn(),
+    findUniqueOrThrow: jest.fn(),
+    create: jest.fn(),
+  },
+  refreshToken: {
+    findMany: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
+};
+
+const mockJwtService = {
+  signAsync: jest.fn().mockResolvedValue('mock_token'),
+};
+
+const mockConfigService = {
+  get: jest.fn((key: string) => {
+    const config: Record<string, string> = {
+      JWT_ACCESS_SECRET: 'access_secret',
+      JWT_REFRESH_SECRET: 'refresh_secret',
+      JWT_ACCESS_EXPIRES_IN: '15m',
+      JWT_REFRESH_EXPIRES_IN: '7d',
+    };
+    return config[key];
+  }),
+  getOrThrow: jest.fn((key: string) => {
+    const config: Record<string, string> = {
+      JWT_ACCESS_SECRET: 'access_secret',
+      JWT_REFRESH_SECRET: 'refresh_secret',
+    };
+
+    if (!config[key]) {
+      throw new Error(`Config key ${key} not found`);
+    }
+
+    return config[key];
+  }),
+};
+
+describe('AuthService', () => {
+  let service: AuthService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: JwtService, useValue: mockJwtService },
+        { provide: ConfigService, useValue: mockConfigService },
+      ],
+    }).compile();
+
+    service = module.get<AuthService>(AuthService);
+    jest.clearAllMocks();
+  });
+
+  describe('register()', () => {
+    it('should throw ConflictException if email already exists', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+
+      await expect(
+        service.register({ email: 'test@example.com', password: 'Password1' }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should create a new user and return tokens + user', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockResolvedValue(mockUser);
+      mockPrismaService.refreshToken.create.mockResolvedValue({});
+      mockJwtService.signAsync.mockResolvedValue('mock_token');
+
+      const result = await service.register({
+        email: 'new@example.com',
+        password: 'Password1',
+        full_name: 'New User',
+      });
+
+      expect(result).toHaveProperty('access_token');
+      expect(result).toHaveProperty('refresh_token');
+      expect(result.user.email).toBe('test@example.com');
+    });
+
+    it('should normalise email to lowercase', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+      });
+      mockPrismaService.refreshToken.create.mockResolvedValue({});
+
+      await service.register({ email: 'NEW@EXAMPLE.COM', password: 'Password1' });
+
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { email: 'new@example.com' },
+      });
+    });
+  });
+
+  describe('login()', () => {
+    it('should throw UnauthorizedException if user not found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.login({ email: 'notfound@example.com', password: 'Password1' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if password is wrong', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.login({ email: 'test@example.com', password: 'WrongPass1' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if user is inactive', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockUser,
+        is_active: false,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await expect(
+        service.login({ email: 'test@example.com', password: 'Password1' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should return tokens and user on valid credentials', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockPrismaService.refreshToken.create.mockResolvedValue({});
+      mockJwtService.signAsync.mockResolvedValue('mock_token');
+
+      const result = await service.login({
+        email: 'test@example.com',
+        password: 'Password1',
+      });
+
+      expect(result).toHaveProperty('access_token', 'mock_token');
+      expect(result.user.email).toBe('test@example.com');
+    });
+  });
+
+  describe('logout()', () => {
+    it('should silently succeed even if token not found', async () => {
+      mockPrismaService.refreshToken.findMany.mockResolvedValue([]);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.logout('uuid-1234', 'some_token'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('getMe()', () => {
+    it('should throw NotFoundException if user not found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.getMe('nonexistent-id')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should return user data if found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+
+      const result = await service.getMe('uuid-1234');
+      expect(result.email).toBe('test@example.com');
+    });
+  });
+});
+</file>
+
+<file path="src/modules/auth/auth.service.ts">
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  NotFoundException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
+import { StringValue } from 'ms';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { AuthResponse } from './interfaces/auth-response.interface';
+
+const BCRYPT_ROUNDS = 12;
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async register(dto: RegisterDto): Promise<AuthResponse> {
+    const email = dto.email.toLowerCase().trim();
+
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existing) {
+      throw new ConflictException('An account with this email already exists');
+    }
+
+    const password_hash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        password_hash,
+        full_name: dto.full_name ?? null,
+        role: 'team_member',
+      },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        avatar_url: true,
+        default_model: true,
+        workspace_id: true,
+      },
+    });
+
+    const tokens = await this.issueTokens(user);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        avatar_url: user.avatar_url,
+        default_model: user.default_model,
+      },
+    };
+  }
+
+  async login(dto: LoginDto): Promise<AuthResponse> {
+    const email = dto.email.toLowerCase().trim();
+
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user || !user.password_hash) {
+      await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (!user.is_active) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Contact your admin.',
+      );
+    }
+
+    const passwordValid = await bcrypt.compare(dto.password, user.password_hash);
+    if (!passwordValid) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const tokens = await this.issueTokens(user);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        avatar_url: user.avatar_url,
+        default_model: user.default_model,
+      },
+    };
+  }
+
+  async refreshTokens(
+    userId: string,
+    rawRefreshToken: string,
+  ): Promise<{ access_token: string; refresh_token: string }> {
+    const storedTokens = await this.prisma.refreshToken.findMany({
+      where: {
+        user_id: userId,
+        is_revoked: false,
+        expires_at: { gt: new Date() },
+      },
+    });
+
+    let matchedToken: (typeof storedTokens)[number] | null = null;
+
+    for (const token of storedTokens) {
+      const match = await bcrypt.compare(rawRefreshToken, token.token_hash);
+      if (match) {
+        matchedToken = token;
+        break;
+      }
+    }
+
+    if (!matchedToken) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    await this.prisma.refreshToken.update({
+      where: { id: matchedToken.id },
+      data: { is_revoked: true },
+    });
+
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        workspace_id: true,
+        is_active: true,
+      },
+    });
+
+    if (!user.is_active) {
+      throw new UnauthorizedException('Account deactivated');
+    }
+
+    return this.issueTokens(user);
+  }
+
+  async logout(userId: string, rawRefreshToken: string): Promise<void> {
+    const storedTokens = await this.prisma.refreshToken.findMany({
+      where: { user_id: userId, is_revoked: false },
+    });
+
+    for (const token of storedTokens) {
+      const match = await bcrypt.compare(rawRefreshToken, token.token_hash);
+      if (match) {
+        await this.prisma.refreshToken.update({
+          where: { id: token.id },
+          data: { is_revoked: true },
+        });
+        break;
+      }
+    }
+  }
+
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        avatar_url: true,
+        default_model: true,
+        view_preferences: true,
+        workspace_id: true,
+        is_active: true,
+        created_at: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  private async issueTokens(user: {
+    id: string;
+    email: string;
+    role: string;
+    workspace_id: string | null;
+  }): Promise<{ access_token: string; refresh_token: string }> {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      workspace_id: user.workspace_id,
+    };
+
+    const [access_token, refresh_token] = await Promise.all([
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        expiresIn: (this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
+          '15m') as StringValue,
+      }),
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ??
+          '7d') as StringValue,
+      }),
+    ]);
+
+    const token_hash = await bcrypt.hash(refresh_token, BCRYPT_ROUNDS);
+    const expiresInStr =
+      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
+    const daysMatch = expiresInStr.match(/^(\d+)d$/);
+    const hoursMatch = expiresInStr.match(/^(\d+)h$/);
+    const expiryMs = daysMatch
+      ? parseInt(daysMatch[1], 10) * 24 * 60 * 60 * 1000
+      : hoursMatch
+        ? parseInt(hoursMatch[1], 10) * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+
+    const expires_at = new Date(Date.now() + expiryMs);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash,
+        expires_at,
+      },
+    });
+
+    return { access_token, refresh_token };
+  }
+}
+</file>
+
+<file path="src/modules/auth/decorators/current-user.decorator.ts">
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { FastifyRequest } from 'fastify';
+
+export const CurrentUser = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext) => {
+    const request = ctx.switchToHttp().getRequest<FastifyRequest & { user: any }>();
+    return request.user;
+  },
+);
+</file>
+
+<file path="src/modules/auth/decorators/public.decorator.ts">
+import { SetMetadata } from '@nestjs/common';
+
+export const IS_PUBLIC_KEY = 'isPublic';
+export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+</file>
+
+<file path="src/modules/auth/decorators/roles.decorator.ts">
+import { SetMetadata } from '@nestjs/common';
+
+export const ROLES_KEY = 'roles';
+export const Roles = (...roles: string[]) => SetMetadata(ROLES_KEY, roles);
+</file>
+
+<file path="src/modules/auth/dto/login.dto.ts">
+import { IsEmail, IsString, IsNotEmpty } from 'class-validator';
+
+export class LoginDto {
+  @IsEmail({}, { message: 'Provide a valid email address' })
+  email: string;
+
+  @IsString()
+  @IsNotEmpty()
+  password: string;
+}
+</file>
+
+<file path="src/modules/auth/dto/refresh-token.dto.ts">
+import { IsString, IsNotEmpty } from 'class-validator';
+
+export class RefreshTokenDto {
+  @IsString()
+  @IsNotEmpty()
+  refresh_token: string;
+}
+</file>
+
+<file path="src/modules/auth/dto/register.dto.ts">
+import {
+  IsEmail,
+  IsString,
+  MaxLength,
+  MinLength,
+  IsOptional,
+  Matches,
+} from 'class-validator';
+
+export class RegisterDto {
+  @IsEmail({}, { message: 'Provide a valid email address' })
+  email: string;
+
+  @IsString()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @MaxLength(72, { message: 'Password must not exceed 72 characters' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message:
+      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+  })
+  password: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  full_name?: string;
+}
+</file>
+
+<file path="src/modules/auth/guards/jwt-auth.guard.ts">
+import {
+  Injectable,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { Reflector } from '@nestjs/core';
+import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private readonly reflector: Reflector) {
+    super();
+  }
+
+  canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (isPublic) {
+      return true;
+    }
+
+    return super.canActivate(context);
+  }
+
+  handleRequest(err: any, user: any) {
+    if (err || !user) {
+      throw err || new UnauthorizedException('Authentication required');
+    }
+    return user;
+  }
+}
+</file>
+
+<file path="src/modules/auth/guards/roles.guard.ts">
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { ROLES_KEY } from '../decorators/roles.decorator';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+  constructor(private readonly reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (!requiredRoles || requiredRoles.length === 0) {
+      return true;
+    }
+
+    const { user } = context.switchToHttp().getRequest<{ user?: { role?: string } }>();
+    if (!user || !user.role || !requiredRoles.includes(user.role)) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
+
+    return true;
+  }
+}
+</file>
+
+<file path="src/modules/auth/interfaces/auth-response.interface.ts">
+export interface AuthResponse {
+  access_token: string;
+  refresh_token: string;
+  user: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    role: string;
+    avatar_url: string | null;
+    default_model: string | null;
+  };
+}
+</file>
+
+<file path="src/modules/auth/interfaces/jwt-payload.interface.ts">
+export interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+  workspace_id: string | null;
+  iat?: number;
+  exp?: number;
+}
+</file>
+
+<file path="src/modules/auth/strategies/jwt.strategy.ts">
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { JwtPayload } from '../interfaces/jwt-payload.interface';
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+    });
+  }
+
+  async validate(payload: JwtPayload) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        is_active: true,
+        workspace_id: true,
+        full_name: true,
+        avatar_url: true,
+        default_model: true,
+      },
+    });
+
+    if (!user || !user.is_active) {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+
+    return user;
+  }
+}
+</file>
+
+<file path="src/modules/auth/strategies/refresh.strategy.ts">
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+
+@Injectable()
+export class RefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
+  constructor(private readonly configService: ConfigService) {
+    super({
+      jwtFromRequest: ExtractJwt.fromBodyField('refresh_token'),
+      ignoreExpiration: false,
+      secretOrKey: configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+      passReqToCallback: true,
+    });
+  }
+
+  async validate(req: { body?: { refresh_token?: string } }, payload: any) {
+    const refresh_token = req.body?.refresh_token;
+    if (!refresh_token) {
+      throw new UnauthorizedException('Refresh token not provided');
+    }
+    return { ...payload, refresh_token };
+  }
+}
+</file>
+
+<file path="src/prisma/prisma.module.ts">
+import { Global, Module } from '@nestjs/common';
+import { PrismaService } from './prisma.service';
+
+@Global()
+@Module({
+  providers: [PrismaService],
+  exports: [PrismaService], // Crucial: export the service so others can use it
+})
+export class PrismaModule {}
+</file>
+
+<file path="src/prisma/prisma.service.ts">
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { PrismaClient } from '../generated/prisma/client'; // Import generated Prisma client entry
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  constructor() {
+    // 1. Create a connection pool using your .env database URL
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    
+    // 2. Wrap it in the Prisma 7 Postgres Adapter
+    const adapter = new PrismaPg(pool);
+    
+    // 3. Pass the adapter to the base PrismaClient
+    super({ adapter });
+  }
+
+  // Connect to the database when the module initializes
+  async onModuleInit() {
+    await this.$connect();
+  }
+
+  // Clean up the connection when the app shuts down
+  async onModuleDestroy() {
+    await this.$disconnect();
+  }
+}
+</file>
+
+<file path="tsconfig.build.json">
+{
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2023",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "noFallthroughCasesInSwitch": false
+  }
+}
+</file>
+
+</files>

@@ -1,8 +1,15 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// ============================================================================
+// CIOS — Client Intelligence Operating System
+// Prisma 7 Schema  |  PostgreSQL  |  pgvector + pg_search (ParadeDB)
+// Schema v4.0 — All 28 tables + refresh_tokens
+//
+// IMPORTANT — Three column types require raw SQL migrations (Prisma cannot
+// generate DDL for these natively):
+//
+// HNSW + BM25 indexes (Section 10 of schema doc) must be applied via a
+// raw SQL migration after `prisma migrate dev` creates the base tables.
+// See the bottom of this file for the raw SQL reference block.
+// ============================================================================
 
 generator client {
   provider     = "prisma-client"
@@ -14,11 +21,60 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
 enum UserRole {
   admin
   project_owner
   team_member
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.1  WORKSPACES — multi-tenant root entity
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Workspace {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String
+  settings   Json?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // ── reverse relations ──────────────────────────────────────────────────────
+  users                     User[]
+  projects                  Project[]
+  project_members           ProjectMember[]
+  project_custom_properties ProjectCustomProperty[]
+  thread_groups             ThreadGroup[]
+  threads                   Thread[]
+  messages                  Message[]
+  project_documents         ProjectDocument[]
+  document_chunks           DocumentChunk[]
+  attachments               Attachment[]
+  vault_items               VaultItem[]
+  skills                    Skill[]
+  skill_versions            SkillVersion[]
+  thread_active_skills      ThreadActiveSkill[]
+  mcp_servers               McpServer[]
+  artifact_templates        ArtifactTemplate[]
+  document_templates        DocumentTemplate[]
+  artifacts                 Artifact[]
+  artifact_files            ArtifactFile[]
+  scraping_events           ScrapingEvent[]
+  usage_events              UsageEvent[]
+  audit_log                 AuditLog[]
+  api_keys                  ApiKey[]
+  mentions                  Mention[]
+  notifications             Notification[]
+
+  @@map("workspaces")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.2  USERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 model User {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -34,10 +90,60 @@ model User {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  refresh_tokens   RefreshToken[]
+  workspace    Workspace? @relation(fields: [workspace_id], references: [id])
+  refresh_tokens RefreshToken[]
+
+  // Project ownership
+  owned_projects                Project[]          @relation("ProjectOwner")
+  // Project memberships (member / assigned_by are different FKs → named relations)
+  project_memberships           ProjectMember[]    @relation("MemberUser")
+  assigned_memberships          ProjectMember[]    @relation("AssignedByUser")
+  // Thread groups
+  thread_groups_created         ThreadGroup[]      @relation("ThreadGroupCreatedBy")
+  // Threads
+  threads_created               Thread[]           @relation("ThreadCreatedBy")
+  // Messages
+  messages_created              Message[]          @relation("MessageCreatedBy")
+  // Custom properties
+  custom_properties_created     ProjectCustomProperty[] @relation("CustomPropertyCreatedBy")
+  // Documents
+  documents_uploaded            ProjectDocument[]  @relation("DocumentUploadedBy")
+  // Vault items
+  vault_items_uploaded          VaultItem[]        @relation("VaultItemUploadedBy")
+  // Skills
+  skills_created                Skill[]            @relation("SkillCreatedBy")
+  skills_approved               Skill[]            @relation("SkillApprovedBy")
+  skill_versions_changed        SkillVersion[]     @relation("SkillVersionChangedBy")
+  // MCP servers
+  mcp_servers_added             McpServer[]        @relation("McpAddedBy")
+  mcp_servers_approved          McpServer[]        @relation("McpApprovedBy")
+  // Artifact templates
+  artifact_templates_created    ArtifactTemplate[] @relation("ArtifactTemplateCreatedBy")
+  artifact_templates_approved   ArtifactTemplate[] @relation("ArtifactTemplateApprovedBy")
+  // Document templates
+  document_templates_created    DocumentTemplate[] @relation("DocumentTemplateCreatedBy")
+  document_templates_approved   DocumentTemplate[] @relation("DocumentTemplateApprovedBy")
+  // Attachments
+  attachments_uploaded          Attachment[]       @relation("AttachmentUploadedBy")
+  // Scraping / usage events
+  scraping_events               ScrapingEvent[]    @relation("ScrapingEventUser")
+  usage_events                  UsageEvent[]       @relation("UsageEventUser")
+  // Audit log
+  audit_log_entries             AuditLog[]         @relation("AuditLogUser")
+  // API keys
+  api_keys_added                ApiKey[]           @relation("ApiKeyAddedBy")
+  // Mentions (mentioned vs mentioned_by → two named relations)
+  received_mentions             Mention[]          @relation("MentionedUser")
+  sent_mentions                 Mention[]          @relation("MentionedByUser")
+  // Notifications
+  notifications                 Notification[]     @relation("NotificationUser")
 
   @@map("users")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REFRESH TOKENS  (auth module — keep as-is)
+// ─────────────────────────────────────────────────────────────────────────────
 
 model RefreshToken {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -47,7 +153,988 @@ model RefreshToken {
   created_at DateTime @default(now())
   is_revoked Boolean  @default(false)
 
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.3  PROJECTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Project {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id           String   @db.Uuid
+  name                   String
+  /// client | internal_bd | internal_build
+  type                   String?
+  /// active | paused | completed | archived
+  status                 String?
+  /// Layer 1 identity context injected into every AI thread
+  brief                  String?
+  system_instructions    String?
+  default_model          String?
+  owner_id               String   @db.Uuid
+  clickup_link           String?
+  slack_channel_link     String?
+  fathom_link            String?
+  vault_drive_link       String?
+  /// OpenAI Vector Store ID — one per project (OpenAI ingestion path)
+  openai_vector_store_id String?
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  owner     User      @relation("ProjectOwner", fields: [owner_id], references: [id])
+
+  project_members           ProjectMember[]
+  project_custom_properties ProjectCustomProperty[]
+  thread_groups             ThreadGroup[]
+  threads                   Thread[]
+  messages                  Message[]
+  project_documents         ProjectDocument[]
+  document_chunks           DocumentChunk[]
+  attachments               Attachment[]
+  vault_items               VaultItem[]
+  skills                    Skill[]
+  mcp_servers               McpServer[]
+  document_templates        DocumentTemplate[]
+  artifacts                 Artifact[]
+  artifact_files            ArtifactFile[]
+  scraping_events           ScrapingEvent[]
+  usage_events              UsageEvent[]
+  audit_log                 AuditLog[]
+  mentions                  Mention[]
+
+  @@index([workspace_id, status])
+  @@map("projects")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.4  PROJECT_MEMBERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProjectMember {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String   @db.Uuid
+  user_id      String   @db.Uuid
+  workspace_id String   @db.Uuid
+  /// read_only | edit
+  access_level String
+  assigned_by  String   @db.Uuid
+  assigned_at  DateTime @default(now())
+
+  project          Project   @relation(fields: [project_id], references: [id])
+  workspace        Workspace @relation(fields: [workspace_id], references: [id])
+  user             User      @relation("MemberUser", fields: [user_id], references: [id])
+  assigned_by_user User      @relation("AssignedByUser", fields: [assigned_by], references: [id])
+
+  @@unique([project_id, user_id])
+  @@map("project_members")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.5  PROJECT_CUSTOM_PROPERTIES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProjectCustomProperty {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id    String   @db.Uuid
+  workspace_id  String   @db.Uuid
+  name          String
+  /// text | number | date | single_select | multi_select | checkbox | person
+  property_type String
+  /// [{value, label, color}] for select types
+  options       Json?
+  sort_order    Int?
+  created_by    String   @db.Uuid
+  created_at    DateTime @default(now())
+
+  project  Project   @relation(fields: [project_id], references: [id])
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  creator  User      @relation("CustomPropertyCreatedBy", fields: [created_by], references: [id])
+
+  thread_property_values ThreadPropertyValue[]
+
+  @@map("project_custom_properties")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.6  THREAD_GROUPS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ThreadGroup {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String   @db.Uuid
+  workspace_id String   @db.Uuid
+  name         String
+  sort_order   Int?
+  created_by   String   @db.Uuid
+  created_at   DateTime @default(now())
+
+  project   Project   @relation(fields: [project_id], references: [id])
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  creator   User      @relation("ThreadGroupCreatedBy", fields: [created_by], references: [id])
+
+  threads Thread[]
+
+  @@map("thread_groups")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.7  THREADS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Thread {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id            String    @db.Uuid
+  workspace_id          String    @db.Uuid
+  group_id              String?   @db.Uuid
+  title                 String
+  /// Strategy | Dev | Automation | Copy | Ads | Research | BD | Ops | Admin | Design | Proposal | SOW
+  purpose_tag           String?
+  /// active | archived
+  status                String?   @default("active")
+  /// team | private
+  access_level          String?   @default("team")
+  system_prompt         String?
+  created_by            String    @db.Uuid
+  last_model_used       String?
+  last_active_at        DateTime?
+  /// Aggregated cost — updated per message response
+  total_cost            Decimal?  @db.Decimal(10, 6)
+  /// Stored compacted conversation summary for context window management
+  compaction_summary    String?
+  compaction_message_id String?   @db.Uuid
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+
+  project      Project      @relation(fields: [project_id], references: [id])
+  workspace    Workspace    @relation(fields: [workspace_id], references: [id])
+  thread_group ThreadGroup? @relation(fields: [group_id], references: [id])
+  creator      User         @relation("ThreadCreatedBy", fields: [created_by], references: [id])
+
+  messages               Message[]
+  thread_property_values ThreadPropertyValue[]
+  thread_active_skills   ThreadActiveSkill[]
+  attachments            Attachment[]
+  artifacts              Artifact[]
+  artifact_files         ArtifactFile[]
+  scraping_events        ScrapingEvent[]
+  usage_events           UsageEvent[]
+  mentions               Mention[]
+
+  /// idx_threads_project — paginated thread list sorted by last active
+  @@index([project_id, last_active_at(sort: Desc)])
+  @@map("threads")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.8  THREAD_PROPERTY_VALUES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ThreadPropertyValue {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  thread_id   String @db.Uuid
+  property_id String @db.Uuid
+  /// Flexible: string | number | ISO date string | UUID[] (person) | boolean
+  value       Json?
+
+  thread   Thread                @relation(fields: [thread_id], references: [id])
+  property ProjectCustomProperty @relation(fields: [property_id], references: [id])
+
+  @@unique([thread_id, property_id])
+  @@map("thread_property_values")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2.9  MESSAGES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Message {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  thread_id    String   @db.Uuid
+  project_id   String   @db.Uuid
+  workspace_id String   @db.Uuid
+  /// user | assistant | system
+  role         String
+  content      String
+
+  /// ⚠ Cannot be set by Prisma — create via raw SQL migration:
+  ///   ALTER TABLE messages ADD COLUMN content_search_vector tsvector
+  ///   GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+
+  /// anthropic | openai | google
+  provider   String?
+  model_name String?
+
+  created_by    String   @db.Uuid
+  token_in      Int?
+  token_out     Int?
+  /// Convenience cache: (token_in × price_in) + (token_out × price_out)
+  /// Source of truth for finance is usage_events table
+  cost_estimate Decimal? @db.Decimal(10, 6)
+  /// TRUE if this row is a compaction summary record
+  is_compacted  Boolean  @default(false)
+  created_at    DateTime @default(now())
+
+  thread    Thread    @relation(fields: [thread_id], references: [id])
+  project   Project   @relation(fields: [project_id], references: [id])
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  creator   User      @relation("MessageCreatedBy", fields: [created_by], references: [id])
+
+  attachments          Attachment[]
+  thread_active_skills ThreadActiveSkill[]
+  artifacts            Artifact[]
+  artifact_files       ArtifactFile[]
+  usage_events         UsageEvent[]
+  mentions             Mention[]
+
+  /// idx_messages_thread — paginated message history
+  @@index([thread_id, created_at])
+  /// idx_messages_project — project-level message queries
+  @@index([project_id, created_at])
+  @@map("messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.1  PROJECT_DOCUMENTS  (unified source record for all document types)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProjectDocument {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String   @db.Uuid
+  workspace_id String   @db.Uuid
+
+  /// upload | google_doc | vault | chat_upload | fathom_transcript |
+  /// slack_thread | clickup_sync | firecrawl_web
+  source_type String?
+  title       String
+
+  /// pdf | docx | txt | md | csv | xlsx | image | google_doc | html
+  file_type       String?
+  /// Enforced max 20 MB at API level
+  file_size_bytes Int?
+
+  /// s3 | google_drive | anthropic_files | external_url
+  storage_type String?
+  storage_key  String?
+
+  /// Set when source_type = google_doc
+  google_doc_id       String?
+  original_url        String?
+  external_source_url String?
+
+  /// OpenAI Files API file_id after upload
+  openai_file_id String?
+  /// Anthropic Files API file_id (create-once, reference-many pattern)
+  anthropic_file_id String?
+  /// OpenAI Vector Store attachment ID — set after file is indexed
+  vector_store_file_id String?
+
+  /// pending | processing | completed | failed
+  ingestion_status String?   @default("pending")
+  /// Pinned docs always loaded in full at Layer 2 context assembly
+  is_pinned        Boolean   @default(false)
+
+  /// Flexible: page_count, word_count, last_modified, google_revision_id …
+  metadata       Json?
+  chunk_count    Int?
+  last_synced_at DateTime?
+  uploaded_by    String    @db.Uuid
+  created_at     DateTime  @default(now())
+
+  project   Project   @relation(fields: [project_id], references: [id])
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  uploader  User      @relation("DocumentUploadedBy", fields: [uploaded_by], references: [id])
+
+  document_chunks DocumentChunk[]
+  attachments     Attachment[]
+  vault_items     VaultItem[]
+
+  @@map("project_documents")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.2  DOCUMENT_CHUNKS  (pgvector RAG — rows are NEVER hard-deleted)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DocumentChunk {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String   @db.Uuid
+  workspace_id String   @db.Uuid
+  document_id  String   @db.Uuid
+  /// Denormalised from parent document for query efficiency
+  source_type  String?
+  /// Sequential position within parent document
+  chunk_index  Int
+  /// ~600 tokens with 100-token overlap
+  content      String
+  /// SHA-256 hash of normalised content — used for cross-source deduplication
+  content_hash String
+
+  /// TRUE when document is re-ingested. NEVER hard-delete these rows.
+  superseded Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  project   Project         @relation(fields: [project_id], references: [id])
+  workspace Workspace       @relation(fields: [workspace_id], references: [id])
+  document  ProjectDocument @relation(fields: [document_id], references: [id])
+
+  /// idx_doc_chunks_project — scoped RAG retrieval
+  @@index([project_id, superseded])
+  @@map("document_chunks")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.3  ATTACHMENTS  (files attached to specific chat messages)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Attachment {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  message_id      String   @db.Uuid
+  thread_id       String   @db.Uuid
+  project_id      String   @db.Uuid
+  workspace_id    String   @db.Uuid
+  file_name       String?
+  /// MIME type
+  file_type       String?
+  file_size_bytes Int?
+  /// S3 object key
+  storage_key     String?
+  /// Links to ingestion record — nullable
+  document_id     String?  @db.Uuid
+  uploaded_by     String   @db.Uuid
+  created_at      DateTime @default(now())
+
+  message   Message         @relation(fields: [message_id], references: [id])
+  thread    Thread          @relation(fields: [thread_id], references: [id])
+  project   Project         @relation(fields: [project_id], references: [id])
+  workspace Workspace       @relation(fields: [workspace_id], references: [id])
+  document  ProjectDocument? @relation(fields: [document_id], references: [id])
+  uploader  User            @relation("AttachmentUploadedBy", fields: [uploaded_by], references: [id])
+
+  @@map("attachments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.4  VAULT_ITEMS  (Client Vault structured document registry)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model VaultItem {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String   @db.Uuid
+  workspace_id String   @db.Uuid
+  /// Nullable — external-link-only items have no document record
+  document_id  String?  @db.Uuid
+  title        String
+
+  /// canonical | working_artifact
+  category      String?
+  /// sow | proposal | roadmap | strategy | brief | copy_draft |
+  /// report | transcript | deliverable
+  document_type String?
+
+  /// s3 | google_drive | external
+  storage_type  String?
+  /// S3 object key or Google Drive file ID
+  storage_key   String?
+  external_link String?
+  uploaded_by   String   @db.Uuid
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  project   Project          @relation(fields: [project_id], references: [id])
+  workspace Workspace        @relation(fields: [workspace_id], references: [id])
+  document  ProjectDocument? @relation(fields: [document_id], references: [id])
+  uploader  User             @relation("VaultItemUploadedBy", fields: [uploaded_by], references: [id])
+
+  @@map("vault_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4.1  SKILLS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Skill {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String  @db.Uuid
+  /// NULL = workspace-scoped; non-null = project-scoped
+  project_id   String? @db.Uuid
+
+  /// Unique within workspace — kebab-case. Used for /skill lookup.
+  name        String  @db.VarChar(64)
+  /// Semantic routing description loaded during Phase 2 Discovery (~100 tokens)
+  description String? @db.VarChar(1024)
+
+  /// workspace | project (redundant with project_id nullable — explicit for query clarity)
+  scope    String
+  /// Automation | AI Dev | Brand | GTM | Full-Stack | Proposal | Onboarding | SOW | Custom
+  category String?
+
+  /// Full SKILL.md body — only loaded in Phase 4 Progressive Disclosure, never during Discovery
+  content_md String?
+
+  /// live | pending_approval | archived
+  status String @default("pending_approval")
+
+  /// If TRUE, auto-loaded at thread creation without explicit invocation
+  auto_inject Boolean @default(false)
+
+  /// Current live version number — incremented on every approved edit
+  version Int @default(1)
+
+  /// html | docx | pptx — enables document artifact generation pipeline
+  output_type   String?
+  /// References artifact_templates.slug
+  template_slug String?
+  schema_slug   String?
+
+  /// Recursive dependency UUIDs — ALWAYS scoped to workspace_id
+
+  created_by  String   @db.Uuid
+  approved_by String?  @db.Uuid
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  project   Project?  @relation(fields: [project_id], references: [id])
+  creator   User      @relation("SkillCreatedBy", fields: [created_by], references: [id])
+  approver  User?     @relation("SkillApprovedBy", fields: [approved_by], references: [id])
+
+  skill_versions       SkillVersion[]
+  thread_active_skills ThreadActiveSkill[]
+  artifacts            Artifact[]
+
+  /// idx_skills_workspace — discovery query: all live skills for workspace
+  @@index([workspace_id, status, scope])
+  @@map("skills")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4.2  SKILL_VERSIONS  (immutable snapshot before every live skill edit)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model SkillVersion {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  skill_id       String   @db.Uuid
+  workspace_id   String   @db.Uuid
+  version_number Int
+  /// Complete SKILL.md body at this version — immutable once written
+  content_md     String
+  /// Optional description of what changed
+  change_summary String?
+  changed_by     String   @db.Uuid
+  created_at     DateTime @default(now())
+
+  skill           Skill     @relation(fields: [skill_id], references: [id])
+  workspace       Workspace @relation(fields: [workspace_id], references: [id])
+  changed_by_user User      @relation("SkillVersionChangedBy", fields: [changed_by], references: [id])
+
+  @@map("skill_versions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4.3  THREAD_ACTIVE_SKILLS  (NEW — per-message skill injection tracking)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ThreadActiveSkill {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  thread_id    String   @db.Uuid
+  /// NULL = thread-session level; non-null = specific message
+  message_id   String?  @db.Uuid
+  skill_id     String   @db.Uuid
+  workspace_id String   @db.Uuid
+
+  /// auto_inject | manual | dependency
+  invocation_type String
+
+  /// User dismissed this skill for the current session (does not remove from library)
+  dismissed   Boolean  @default(false)
+  injected_at DateTime
+
+  thread    Thread    @relation(fields: [thread_id], references: [id])
+  message   Message?  @relation(fields: [message_id], references: [id])
+  skill     Skill     @relation(fields: [skill_id], references: [id])
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+
+  @@map("thread_active_skills")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5.1  MCP_SERVERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model McpServer {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String  @db.Uuid
+  /// NULL = workspace-scoped; non-null = project-specific
+  project_id   String? @db.Uuid
+
+  name        String
+  /// SSE endpoint URL
+  url         String
+  description String?
+
+  /// oauth2 | api_key | none
+  auth_method String?
+  /// AES-256 encrypted — NEVER returned in API responses
+  auth_config Json?
+
+  /// [{name, description, inputSchema}]
+  supported_tools Json?
+
+  /// workspace | project
+  scope String?
+
+  /// active | inactive | pending_approval
+  status String? @default("pending_approval")
+
+  added_by    String   @db.Uuid
+  approved_by String?  @db.Uuid
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  project   Project?  @relation(fields: [project_id], references: [id])
+  adder     User      @relation("McpAddedBy", fields: [added_by], references: [id])
+  approver  User?     @relation("McpApprovedBy", fields: [approved_by], references: [id])
+
+  @@map("mcp_servers")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6.1  ARTIFACT_TEMPLATES  (visual slot-filling template files)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ArtifactTemplate {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String @db.Uuid
+
+  name      String
+  brand_tag String?
+
+  /// html | docx | pptx
+  output_type       String
+  template_file_url String?
+  thumbnail_url     String?
+
+  /// [{name, type, description, maxLength, required}] injected into AI prompt
+  schema_json Json
+
+  /// Machine-readable identifier (e.g. ladder-proposal) — referenced by skills
+  slug    String   @unique
+  version Int      @default(1)
+
+  /// active | pending_approval | archived
+  status String? @default("pending_approval")
+
+  created_by  String   @db.Uuid
+  approved_by String?  @db.Uuid
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  creator   User      @relation("ArtifactTemplateCreatedBy", fields: [created_by], references: [id])
+  approver  User?     @relation("ArtifactTemplateApprovedBy", fields: [approved_by], references: [id])
+
+  artifacts Artifact[]
+
+  @@map("artifact_templates")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6.2  DOCUMENT_TEMPLATES  (NEW — Code Interpreter / python-docx generation specs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DocumentTemplate {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String  @db.Uuid
+  /// NULL = workspace-level (available to all projects)
+  project_id   String? @db.Uuid
+
+  template_name String
+
+  /// proposal | sow | prd | report | brand_guidelines | case_study | custom
+  document_type String
+
+  /// Section ordering, heading hierarchy, required boilerplate, typography rules
+  template_spec Json
+
+  /// Base Python code fragment (python-docx branded styles) — injected into Code Interpreter prompt
+  python_docx_snippet String?
+  /// Optional reference to SKILL.md file for this document type
+  skill_file_path     String?
+
+  /// draft | active
+  status String @default("draft")
+
+  created_by  String   @db.Uuid
+  approved_by String?  @db.Uuid
+  created_at  DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  project   Project?  @relation(fields: [project_id], references: [id])
+  creator   User      @relation("DocumentTemplateCreatedBy", fields: [created_by], references: [id])
+  approver  User?     @relation("DocumentTemplateApprovedBy", fields: [approved_by], references: [id])
+
+  @@map("document_templates")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6.3  ARTIFACTS  (generated artifact records with export URLs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Artifact {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  message_id   String @db.Uuid
+  thread_id    String @db.Uuid
+  project_id   String @db.Uuid
+  workspace_id String @db.Uuid
+
+  template_id String? @db.Uuid
+  skill_id    String? @db.Uuid
+
+  /// AI-returned structured JSON matching the template schema
+  content_json  Json?
+  /// Stored rendered HTML (HTML template type) — avoids re-rendering
+  rendered_html String?
+  /// S3 signed-URL base paths for each export format
+  docx_url      String?
+  pptx_url      String?
+  /// PDF always generated as secondary format
+  pdf_url       String?
+
+  created_at DateTime @default(now())
+
+  message   Message           @relation(fields: [message_id], references: [id])
+  thread    Thread            @relation(fields: [thread_id], references: [id])
+  project   Project           @relation(fields: [project_id], references: [id])
+  workspace Workspace         @relation(fields: [workspace_id], references: [id])
+  template  ArtifactTemplate? @relation(fields: [template_id], references: [id])
+  skill     Skill?            @relation(fields: [skill_id], references: [id])
+
+  @@map("artifacts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6.4  ARTIFACT_FILES  (NEW — persistent S3 binary file records)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ArtifactFile {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String @db.Uuid
+  thread_id    String @db.Uuid
+  message_id   String @db.Uuid
+  workspace_id String @db.Uuid
+
+  /// e.g. Acme-Proposal-v1.docx
+  file_name String
+  /// docx | pptx | pdf | xlsx | html
+  file_type String
+  /// S3 object key
+  storage_path String
+  /// Permanent pre-signed URL with extended expiry (bypasses 20-min Code Interpreter expiry)
+  download_url String?
+
+  generated_by_model           String?
+  generation_prompt_tokens     Int?
+  generation_completion_tokens Int?
+  cost_usd                     Decimal? @db.Decimal(10, 6)
+  created_at                   DateTime @default(now())
+
+  project   Project   @relation(fields: [project_id], references: [id])
+  thread    Thread    @relation(fields: [thread_id], references: [id])
+  message   Message   @relation(fields: [message_id], references: [id])
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+
+  @@map("artifact_files")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7.1  SCRAPING_EVENTS  (NEW — audit trail for all web fetch / scrape events)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ScrapingEvent {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String  @db.Uuid
+  /// NULL for background ingestion not triggered in a thread
+  thread_id    String? @db.Uuid
+  workspace_id String  @db.Uuid
+  /// NULL for automated / scheduled ingestion
+  user_id      String? @db.Uuid
+
+  /// web_fetch | web_search | firecrawl_scrape | firecrawl_crawl |
+  /// google_doc_sync | fathom_ingest
+  event_type String
+  url        String?
+
+  tokens_fetched         Int?
+  /// NULL for OpenAI path (no dynamic filtering)
+  tokens_after_filtering Int?
+  /// Percentage token reduction from Anthropic dynamic filtering
+  filter_savings_pct     Decimal? @db.Decimal(5, 2)
+
+  /// success | failed | partial
+  status        String
+  error_message String?
+  timestamp     DateTime
+
+  project   Project   @relation(fields: [project_id], references: [id])
+  thread    Thread?   @relation(fields: [thread_id], references: [id])
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  user      User?     @relation("ScrapingEventUser", fields: [user_id], references: [id])
+
+  @@map("scraping_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8.1  USAGE_EVENTS  (NEW — granular per-API-call cost tracking)
+// Source of truth for F13 Finance dashboard.
+// messages.cost_estimate is a convenience cache only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UsageEvent {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String  @db.Uuid
+  /// NULL for workspace-level operations (e.g. admin embedding)
+  project_id   String? @db.Uuid
+  thread_id    String? @db.Uuid
+  message_id   String? @db.Uuid
+  /// NULL for automated background jobs
+  user_id      String? @db.Uuid
+
+  /// chat | embedding | file_search | code_interpreter | web_fetch |
+  /// web_search | code_execution | files_upload
+  event_type String
+
+  /// anthropic | openai | google
+  provider String
+  model    String
+
+  tokens_in         Int?
+  tokens_out        Int?
+  /// Anthropic prompt cache read tokens (billed at reduced rate)
+  cache_tokens_read Int?
+  cost_usd          Decimal? @db.Decimal(10, 6)
+  timestamp         DateTime
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  project   Project?  @relation(fields: [project_id], references: [id])
+  thread    Thread?   @relation(fields: [thread_id], references: [id])
+  message   Message?  @relation(fields: [message_id], references: [id])
+  user      User?     @relation("UsageEventUser", fields: [user_id], references: [id])
+
+  /// idx_usage_events_project — finance dashboard aggregations
+  @@index([project_id, timestamp(sort: Desc)])
+  @@map("usage_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8.2  MODEL_PRICING  (admin-updatable — NEVER hardcode prices in app code)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ModelPricing {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  /// anthropic | openai | google
+  provider   String
+  /// Exact model identifier e.g. claude-sonnet-4-6
+  model_name String
+
+  price_per_1k_token_in  Decimal @db.Decimal(10, 8)
+  price_per_1k_token_out Decimal @db.Decimal(10, 8)
+  effective_from         DateTime
+
+  /// Only one TRUE row per provider + model combination
+  is_current Boolean @default(false)
+
+  @@unique([provider, model_name, effective_from])
+  @@map("model_pricing")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8.3  AUDIT_LOG  (immutable — INSERT only, no UPDATE/DELETE, 12-month retention)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String  @db.Uuid
+  /// NULL for system-automated events
+  user_id      String? @db.Uuid
+  project_id   String? @db.Uuid
+
+  /// login | logout | thread_created | message_sent | file_upload | file_download |
+  /// permission_change | project_created | project_archived | api_key_added |
+  /// api_key_rotated | skill_created | skill_edited | skill_approved | mcp_added |
+  /// mcp_approved | template_uploaded | mention_created | mention_acknowledged |
+  /// search | mcp_tool_invoked | artifact_generated | document_scraped
+  event_type String
+
+  /// Structured context — query_hash (never plaintext query), model, cost, url …
+  event_detail Json
+  ip_address   String?
+
+  /// Immutable — never updated
+  created_at DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  user      User?     @relation("AuditLogUser", fields: [user_id], references: [id])
+  project   Project?  @relation(fields: [project_id], references: [id])
+
+  /// idx_audit_log_workspace
+  @@index([workspace_id, created_at(sort: Desc)])
+  @@map("audit_log")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8.4  API_KEYS  (BYOK — encrypted at rest, never returned after initial save)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApiKey {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String @db.Uuid
+
+  /// anthropic | openai | google
+  provider String
+
+  /// AES-256 encrypted — NEVER logged or returned in API responses
+  encrypted_key String
+
+  /// connected | invalid | missing
+  key_status        String
+  added_by          String    @db.Uuid
+  last_validated_at DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  adder     User      @relation("ApiKeyAddedBy", fields: [added_by], references: [id])
+
+  @@unique([workspace_id, provider])
+  @@map("api_keys")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8.5  MENTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Mention {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  message_id           String    @db.Uuid
+  thread_id            String    @db.Uuid
+  project_id           String    @db.Uuid
+  workspace_id         String    @db.Uuid
+  mentioned_user_id    String    @db.Uuid
+  mentioned_by_user_id String    @db.Uuid
+  acknowledged         Boolean   @default(false)
+  acknowledged_at      DateTime?
+  created_at           DateTime  @default(now())
+
+  message          Message   @relation(fields: [message_id], references: [id])
+  thread           Thread    @relation(fields: [thread_id], references: [id])
+  project          Project   @relation(fields: [project_id], references: [id])
+  workspace        Workspace @relation(fields: [workspace_id], references: [id])
+  mentioned_user   User      @relation("MentionedUser", fields: [mentioned_user_id], references: [id])
+  mentioned_by_user User     @relation("MentionedByUser", fields: [mentioned_by_user_id], references: [id])
+
+  @@map("mentions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8.6  NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String  @db.Uuid
+  workspace_id String  @db.Uuid
+
+  /// mention | approval_request | system | skill_approved | mcp_approved | template_approved
+  type           String
+  reference_id   String? @db.Uuid
+  /// mention | skill | mcp | template | artifact
+  reference_type String?
+
+  title String
+  body  String?
+  read  Boolean  @default(false)
+
+  created_at DateTime @default(now())
+
+  user      User      @relation("NotificationUser", fields: [user_id], references: [id])
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+
+  @@index([user_id, read, created_at(sort: Desc)])
+  @@map("notifications")
+}
+
+// ============================================================================
+// RAW SQL — apply these in a manual migration AFTER prisma migrate dev
+// (Prisma cannot generate DDL for pgvector, generated columns, or BM25 indexes)
+// ============================================================================
+//
+// -- 1. Extensions (run once per database)
+// CREATE EXTENSION IF NOT EXISTS vector;       -- pgvector
+// CREATE EXTENSION IF NOT EXISTS pg_search;    -- ParadeDB BM25
+//
+// -- 2. Generated tsvector column on messages
+// ALTER TABLE messages
+//   ADD COLUMN IF NOT EXISTS content_search_vector tsvector
+//   GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+//
+// -- 3. HNSW vector indexes (m=16, ef_construction=64)
+// CREATE INDEX CONCURRENTLY cios_vec_messages
+//   ON messages USING hnsw (embedding vector_cosine_ops)
+//   WITH (m = 16, ef_construction = 64);
+//
+// CREATE INDEX CONCURRENTLY cios_vec_doc_chunks
+//   ON document_chunks USING hnsw (embedding vector_cosine_ops)
+//   WITH (m = 16, ef_construction = 64);
+//
+// CREATE INDEX CONCURRENTLY cios_vec_skills
+//   ON skills USING hnsw (embedding vector_cosine_ops)
+//   WITH (m = 16, ef_construction = 64);
+//
+// -- 4. ParadeDB BM25 indexes (one per workspace for IDF isolation — example for a workspace UUID)
+// -- Replace <workspace_uuid> with actual workspace IDs, or create a global index first:
+// CALL paradedb.create_bm25(
+//   table_name => 'messages',
+//   index_name => 'cios_search_messages',
+//   key_field  => 'id',
+//   text_fields => paradedb.field('content') || paradedb.field('role')
+// );
+// CALL paradedb.create_bm25(
+//   table_name => 'threads',
+//   index_name => 'cios_search_threads',
+//   key_field  => 'id',
+//   text_fields => paradedb.field('title', tokenizer => paradedb.tokenizer('default', fast => true))
+// );
+// CALL paradedb.create_bm25(
+//   table_name => 'skills',
+//   index_name => 'cios_search_skills',
+//   key_field  => 'id',
+//   text_fields => paradedb.field('name', boost => 5.0) || paradedb.field('content_md')
+// );
+// CALL paradedb.create_bm25(
+//   table_name => 'mcp_servers',
+//   index_name => 'cios_search_mcp_servers',
+//   key_field  => 'id',
+//   text_fields => paradedb.field('name') || paradedb.field('description')
+// );
+// CALL paradedb.create_bm25(
+//   table_name => 'vault_items',
+//   index_name => 'cios_search_vault_items',
+//   key_field  => 'id',
+//   text_fields => paradedb.field('title')
+// );
+//
+// -- 5. PostgreSQL RLS — enable on every table (enforce workspace_id isolation)
+// ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
+// ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+// -- ... repeat for all 28 tables + refresh_tokens
+//
+// -- 6. audit_log permissions — INSERT only for the API app role
+// REVOKE UPDATE, DELETE ON audit_log FROM <api_app_role>;
+// REVOKE UPDATE, DELETE ON document_chunks FROM <api_app_role>;
+// ============================================================================
