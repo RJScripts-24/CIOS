@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { WorkspaceService } from '../workspace/workspace.service';
 import { AuthService } from './auth.service';
 
 jest.mock('bcrypt', () => ({
@@ -28,17 +30,31 @@ const mockUser = {
   created_at: new Date(),
 };
 
+const mockInvitation = {
+  id: 'invite-uuid-001',
+  email: 'new@example.com',
+  status: 'pending',
+  workspace_id: 'workspace-uuid-001',
+};
+
 const mockPrismaService = {
   user: {
     findUnique: jest.fn(),
     findUniqueOrThrow: jest.fn(),
     create: jest.fn(),
   },
+  workspaceInvitation: {
+    findUnique: jest.fn(),
+  },
   refreshToken: {
     findMany: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
+};
+
+const mockWorkspaceService = {
+  acceptInvitationOnRegister: jest.fn(),
 };
 
 const mockJwtService = {
@@ -79,6 +95,7 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: WorkspaceService, useValue: mockWorkspaceService },
       ],
     }).compile();
 
@@ -87,40 +104,80 @@ describe('AuthService', () => {
   });
 
   describe('register()', () => {
+    it('should throw ForbiddenException if invitation token is missing', async () => {
+      await expect(
+        service.register({ email: 'test@example.com', password: 'Password1' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
     it('should throw ConflictException if email already exists', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue({
+        ...mockInvitation,
+        email: 'test@example.com',
+      });
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
 
       await expect(
-        service.register({ email: 'test@example.com', password: 'Password1' }),
+        service.register({
+          email: 'test@example.com',
+          password: 'Password1',
+          token: 'invite-token',
+        }),
       ).rejects.toThrow(ConflictException);
     });
 
     it('should create a new user and return tokens + user', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue(
+        mockInvitation,
+      );
       mockPrismaService.user.findUnique.mockResolvedValue(null);
-      mockPrismaService.user.create.mockResolvedValue(mockUser);
+      mockPrismaService.user.create.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+        workspace_id: 'workspace-uuid-001',
+      });
       mockPrismaService.refreshToken.create.mockResolvedValue({});
       mockJwtService.signAsync.mockResolvedValue('mock_token');
+      mockWorkspaceService.acceptInvitationOnRegister.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+        workspace_id: 'workspace-uuid-001',
+      });
 
       const result = await service.register({
         email: 'new@example.com',
         password: 'Password1',
         full_name: 'New User',
+        token: 'invite-token',
       });
 
       expect(result).toHaveProperty('access_token');
       expect(result).toHaveProperty('refresh_token');
-      expect(result.user.email).toBe('test@example.com');
+      expect(result.user.email).toBe('new@example.com');
     });
 
     it('should normalise email to lowercase', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue(
+        mockInvitation,
+      );
       mockPrismaService.user.findUnique.mockResolvedValue(null);
       mockPrismaService.user.create.mockResolvedValue({
         ...mockUser,
         email: 'new@example.com',
+        workspace_id: 'workspace-uuid-001',
       });
       mockPrismaService.refreshToken.create.mockResolvedValue({});
+      mockWorkspaceService.acceptInvitationOnRegister.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+        workspace_id: 'workspace-uuid-001',
+      });
 
-      await service.register({ email: 'NEW@EXAMPLE.COM', password: 'Password1' });
+      await service.register({
+        email: 'NEW@EXAMPLE.COM',
+        password: 'Password1',
+        token: 'invite-token',
+      });
 
       expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
         where: { email: 'new@example.com' },

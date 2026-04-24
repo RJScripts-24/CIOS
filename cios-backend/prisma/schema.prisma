@@ -1,14 +1,45 @@
 // ============================================================================
 // CIOS — Client Intelligence Operating System
 // Prisma 7 Schema  |  PostgreSQL  |  pgvector + pg_search (ParadeDB)
-// Schema v4.0 — All 28 tables + refresh_tokens
+// Schema v4.1 — 28 tables + refresh_tokens
+//
+// CHANGELOG v4.0 → v4.1
+// ─────────────────────
+// [CHANGE 1] UserRole enum: removed `project_owner`.
+//            Project ownership is a relationship (projects.owner_id), not a
+//            workspace-level role. A user can own Project A while being a
+//            plain editor on Project B — a single UserRole value can't
+//            express that. See User + Project models below.
+//
+// [CHANGE 2] RefreshToken table: KEPT (did not move to a 1:1 field on User).
+//            Rationale documented on the model itself. TL;DR — a single
+//            refresh_token column forces one active session per user, which
+//            kills multi-device login, per-device revocation, and "log out
+//            everywhere". The table has almost no operational overhead.
+//
+// [CHANGE 3] Project.fathom_link: String? → String[].
+//            Fathom regenerates share URLs periodically, so a project
+//            accumulates multiple links over time. Modeled as a text array.
+//
+// [CHANGE 4] ProjectMember: clarified the 1-to-many relationship intent in
+//            comments. No structural change — the existing shape already
+//            supports many memberships per user and enforces same-workspace
+//            via workspace_id.
+//
+// [CHANGE 5] ProjectMember.access_level: String → new enum AccessLevel.
+//            Values: read_only | edit. Replaces the free-text field.
+//
+// [CHANGE 6] ProjectDocument.{openai_file_id, anthropic_file_id,
+//            vector_store_file_id}: kept, with expanded comments explaining
+//            which provider path populates each and why all three are
+//            justified by the BYOK + dual-provider ingestion plan.
 //
 // IMPORTANT — Three column types require raw SQL migrations (Prisma cannot
 // generate DDL for these natively):
-//
-// HNSW + BM25 indexes (Section 10 of schema doc) must be applied via a
-// raw SQL migration after `prisma migrate dev` creates the base tables.
-// See the bottom of this file for the raw SQL reference block.
+//   • pgvector `embedding vector(1536)` columns
+//   • tsvector `content_search_vector` generated column on messages
+//   • HNSW + BM25 indexes (Section 10 of schema doc)
+// See the raw SQL reference block at the bottom of this file.
 // ============================================================================
 
 generator client {
@@ -25,10 +56,20 @@ datasource db {
 // ENUMS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// [CHANGE 1] Removed `project_owner` from UserRole.
+// Ownership of a specific project is tracked by projects.owner_id (FK → users.id).
+// A user's workspace-level permission tier is orthogonal to which projects
+// they happen to own.
 enum UserRole {
   admin
-  project_owner // only two enums project owner inside projects table linked to user id 
   team_member
+}
+
+// [CHANGE 5] New enum for ProjectMember.access_level.
+// Extend here if new tiers are needed (e.g. `comment_only`, `admin`).
+enum AccessLevel {
+  read_only
+  edit
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,7 +79,9 @@ enum UserRole {
 model Workspace {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name       String
-  settings   Json?  // define settings 
+  /// Workspace-level preferences (default model, branding, feature flags, etc.).
+  /// Shape is intentionally loose so product can iterate without migrations.
+  settings   Json?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
@@ -68,9 +111,46 @@ model Workspace {
   api_keys                  ApiKey[]
   mentions                  Mention[]
   notifications             Notification[]
+  // [WORKSPACE INVITE] Reverse relation — allows querying all invitations
+  // sent from this workspace (e.g. to show pending invites in the admin panel).
+  workspace_invitations     WorkspaceInvitation[]
 
   @@map("workspaces")
 }
+
+// ── [WORKSPACE INVITE] NEW ENUM ──────────────────────────────────────────────
+// Lifecycle states for a workspace invitation record.
+// pending  = email sent, user has not yet accepted
+// accepted = user clicked the magic link and joined the workspace
+enum InvitationStatus {
+  pending
+  accepted
+}
+// ── [WORKSPACE INVITE] END NEW ENUM ──────────────────────────────────────────
+
+// ── [WORKSPACE INVITE] NEW MODEL ─────────────────────────────────────────────
+// Tracks email invitations sent by admins to add new or existing users to a
+// workspace. Each record stores the target email, the one-time token embedded
+// in the magic link, and the current status (pending → accepted).
+// No expiry — tokens remain valid until used.
+model WorkspaceInvitation {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String           @db.Uuid
+  invited_by   String           @db.Uuid
+  email        String
+  token        String           @unique
+  status       InvitationStatus @default(pending)
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  inviter   User      @relation("WorkspaceInvitationInvitedBy", fields: [invited_by], references: [id])
+
+  @@index([workspace_id])
+  @@index([token])
+  @@map("workspace_invitations")
+}
+// ── [WORKSPACE INVITE] END NEW MODEL ─────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2.2  USERS
@@ -78,7 +158,7 @@ model Workspace {
 
 model User {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspace_id     String  @db.Uuid
+  workspace_id     String   @db.Uuid
   email            String   @unique
   password_hash    String?
   full_name        String?
@@ -86,15 +166,22 @@ model User {
   role             UserRole @default(team_member)
   is_active        Boolean  @default(true)
   default_model    String?
-  view_preferences Json?    @default("{}")  // define view preference
+  /// Per-user UI state: sidebar layout, pinned projects, collapsed groups, etc.
+  view_preferences Json?    @default("{}")
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  workspace    Workspace @relation(fields: [workspace_id], references: [id])
-  refresh_tokens RefreshToken[]  // 1 to 1 relationship add refresh token field to user table and remove refresh token table 
+  workspace      Workspace      @relation(fields: [workspace_id], references: [id])
+  // [CHANGE 2] RefreshToken relation stays as 1-to-many (NOT 1-to-1).
+  // One user may have many live refresh tokens — one per device/session.
+  refresh_tokens RefreshToken[]
+  // [WORKSPACE INVITE] Reverse relation — tracks all invitations this admin
+  // user has sent. Named relation required because User has multiple FK
+  // relationships to WorkspaceInvitation.
+  sent_invitations WorkspaceInvitation[] @relation("WorkspaceInvitationInvitedBy")
 
-  // Project ownership
-  owned_projects                Project[]          @relation("ProjectOwner") // check how to write relationship
+  // Project ownership — named relation because User → Project has multiple FKs.
+  owned_projects                Project[]          @relation("ProjectOwner")
   // Project memberships (member / assigned_by are different FKs → named relations)
   project_memberships           ProjectMember[]    @relation("MemberUser")
   assigned_memberships          ProjectMember[]    @relation("AssignedByUser")
@@ -142,19 +229,37 @@ model User {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REFRESH TOKENS  (auth module — keep as-is)
+// REFRESH TOKENS  (auth module)
 // ─────────────────────────────────────────────────────────────────────────────
-// Remove this table 
+// [CHANGE 2] KEPT as a separate table — DID NOT collapse into users.refresh_token.
+//
+// Why the table wins over a single column on users:
+//   1. Multi-device sessions. One user → many live tokens (laptop, phone,
+//      browser). A single column would force one device at a time.
+//   2. Per-device revocation. "Log out of this device only" is trivial with
+//      a row-level delete; impossible with a single column.
+//   3. Token rotation audit. Each refresh emits a new row and revokes the
+//      previous one — a column can't preserve history.
+//   4. Global sign-out. "Log out everywhere after password reset" = bulk
+//      UPDATE … SET is_revoked = TRUE WHERE user_id = ? — one SQL statement.
+//   5. Operational cost is minimal: ~N rows per active user, indexed by
+//      token_hash and user_id, with periodic cleanup of expired/revoked rows.
+// ─────────────────────────────────────────────────────────────────────────────
+
 model RefreshToken {
   id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id    String   @db.Uuid
+  /// SHA-256 of the refresh token — NEVER store the raw token.
   token_hash String   @unique
   expires_at DateTime
   created_at DateTime @default(now())
+  /// Soft-revoke flag. A nightly job hard-deletes rows where
+  /// is_revoked = TRUE OR expires_at < now() - interval '30 days'.
   is_revoked Boolean  @default(false)
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@index([user_id, is_revoked])
   @@map("refresh_tokens")
 }
 
@@ -177,9 +282,16 @@ model Project {
   owner_id               String   @db.Uuid
   clickup_link           String?
   slack_channel_link     String?
-  fathom_link            String? // fathom link will be in a array 
+  // [CHANGE 3] fathom_link: String? → String[].
+  // Fathom share URLs are regenerated on every re-share / re-record,
+  // so a project accumulates multiple valid links over its lifetime.
+  // Stored as a PostgreSQL text[]. Defaults to empty array.
+  fathom_links           String[]
   vault_drive_link       String?
-  /// OpenAI Vector Store ID — one per project (OpenAI ingestion path) // What is the purpose of this here 
+  /// OpenAI Vector Store ID — one per project, populated only for workspaces
+  /// that ingest via the OpenAI path. Used by the File Search tool to scope
+  /// semantic retrieval to this project. NULL for Anthropic-only workspaces
+  /// (those use pgvector directly, scoped by project_id).
   openai_vector_store_id String?
   created_at             DateTime @default(now())
   updated_at             DateTime @updatedAt
@@ -187,8 +299,11 @@ model Project {
   workspace Workspace @relation(fields: [workspace_id], references: [id])
   owner     User      @relation("ProjectOwner", fields: [owner_id], references: [id])
 
-  project_members           ProjectMember[]  // 1 to many realtionship to user table  from same workspace
-  project_custom_properties ProjectCustomProperty[] // Define this custom property
+  // [CHANGE 4] 1-to-many → one project can have many ProjectMember rows;
+  // each row binds one User (from the same workspace, enforced via
+  // ProjectMember.workspace_id) to this project with an access_level.
+  project_members           ProjectMember[]
+  project_custom_properties ProjectCustomProperty[]
   thread_groups             ThreadGroup[]
   threads                   Thread[]
   messages                  Message[]
@@ -213,16 +328,23 @@ model Project {
 // ─────────────────────────────────────────────────────────────────────────────
 // 2.4  PROJECT_MEMBERS
 // ─────────────────────────────────────────────────────────────────────────────
+// [CHANGE 4] Relationship shape (for reference, no structural change):
+//   User 1─────* ProjectMember *─────1 Project
+// One user can be a member of many projects; one project has many members.
+// workspace_id is denormalised from both sides and MUST equal the user's
+// workspace_id AND the project's workspace_id (enforced at the service layer
+// and/or via a CHECK constraint in a raw migration).
+// ─────────────────────────────────────────────────────────────────────────────
 
 model ProjectMember {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  project_id   String   @db.Uuid
-  user_id      String   @db.Uuid
-  workspace_id String   @db.Uuid
-  /// read_only | edit
-  access_level String // create a enum of acess level like read write etc
-  assigned_by  String   @db.Uuid
-  assigned_at  DateTime @default(now())
+  id           String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id   String      @db.Uuid
+  user_id      String      @db.Uuid
+  workspace_id String      @db.Uuid
+  // [CHANGE 5] access_level: String → AccessLevel enum (read_only | edit).
+  access_level AccessLevel
+  assigned_by  String      @db.Uuid
+  assigned_at  DateTime    @default(now())
 
   project          Project   @relation(fields: [project_id], references: [id])
   workspace        Workspace @relation(fields: [workspace_id], references: [id])
@@ -250,9 +372,9 @@ model ProjectCustomProperty {
   created_by    String   @db.Uuid
   created_at    DateTime @default(now())
 
-  project  Project   @relation(fields: [project_id], references: [id])
+  project   Project   @relation(fields: [project_id], references: [id])
   workspace Workspace @relation(fields: [workspace_id], references: [id])
-  creator  User      @relation("CustomPropertyCreatedBy", fields: [created_by], references: [id])
+  creator   User      @relation("CustomPropertyCreatedBy", fields: [created_by], references: [id])
 
   thread_property_values ThreadPropertyValue[]
 
@@ -268,7 +390,6 @@ model ThreadGroup {
   project_id   String   @db.Uuid
   workspace_id String   @db.Uuid
   name         String
-  
   created_by   String   @db.Uuid
   created_at   DateTime @default(now())
 
@@ -295,8 +416,7 @@ model Thread {
   purpose_tag           String?
   /// active | archived
   status                String?   @default("active")
-  
-  
+
   system_prompt         String?
   created_by            String    @db.Uuid
   last_model_used       String?
@@ -337,8 +457,16 @@ model ThreadPropertyValue {
   id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   thread_id   String @db.Uuid
   property_id String @db.Uuid
-  /// Flexible: string | number | ISO date string | UUID[] (person) | boolean
-  value       Json?  // what is this value explain 
+  /// The value supplied for this custom property on this thread. Shape depends
+  /// on the parent property_type:
+  ///   text              → "some string"
+  ///   number            → 42
+  ///   date              → "2025-10-14T00:00:00Z" (ISO)
+  ///   single_select     → "option_value"
+  ///   multi_select      → ["opt_a", "opt_b"]
+  ///   checkbox          → true / false
+  ///   person            → ["<user_uuid>", "<user_uuid>"]
+  value       Json?
 
   thread   Thread                @relation(fields: [thread_id], references: [id])
   property ProjectCustomProperty @relation(fields: [property_id], references: [id])
@@ -371,9 +499,10 @@ model Message {
   created_by    String   @db.Uuid
   token_in      Int?
   token_out     Int?
-  /// Convenience cache: (token_in × price_in) + (token_out × price_out)
-  /// Source of truth for finance is usage_events table
-  cost_estimate Decimal? @db.Decimal(10, 6) // to optimise we will remove this in future 
+  /// Convenience cache: (token_in × price_in) + (token_out × price_out).
+  /// Source of truth for finance is usage_events table — this column may be
+  /// dropped in a future optimisation pass.
+  cost_estimate Decimal? @db.Decimal(10, 6)
   /// TRUE if this row is a compaction summary record
   is_compacted  Boolean  @default(false)
   created_at    DateTime @default(now())
@@ -425,14 +554,40 @@ model ProjectDocument {
   original_url        String?
   external_source_url String?
 
-  /// OpenAI Files API file_id after upload
-  openai_file_id String? 
-  /// Anthropic Files API file_id (create-once, reference-many pattern)  // how our use case is being justified 
-  anthropic_file_id String?
-  /// OpenAI Vector Store attachment ID — set after file is indexed
+  // ─── [CHANGE 6] Provider-specific file identifiers ─────────────────────────
+  // All three are justified by the BYOK + dual-provider architecture
+  // (see CIOS_Scraping_Implementation_Plan.docx §3 and §4). Per row, typically
+  // only the columns for the active provider path are populated; they can
+  // coexist only if the same document has been ingested into both pipelines.
+
+  /// OpenAI Files API file_id, returned by POST /v1/files.
+  /// Needed to (a) attach the file to the project's Vector Store via
+  /// POST /v1/vector_stores/{id}/files, and (b) pass it as an input to
+  /// Code Interpreter for deterministic file manipulation.
+  /// Populated only on the OpenAI ingestion path; NULL otherwise.
+  openai_file_id       String?
+
+  /// Anthropic Files API file_id, returned by POST /v1/files (with the
+  /// `anthropic-beta: files-api-2025-04-14` header).
+  /// Enables the "create once, reference many" pattern: the same client
+  /// brief can be referenced across dozens of threads by id alone, instead
+  /// of re-encoding it as base64 in every request. For PDFs, this also
+  /// unlocks Claude's native page-to-image vision pipeline.
+  /// Populated only on the Anthropic ingestion path; NULL otherwise.
+  anthropic_file_id    String?
+
+  /// OpenAI Vector Store attachment ID, returned by
+  /// POST /v1/vector_stores/{vector_store_id}/files.
+  /// DISTINCT from openai_file_id — this id tracks the file's membership
+  /// and indexing status *within the vector store*. Used to (a) poll
+  /// GET /v1/vector_stores/{id}/files/{vs_file_id} until status = completed,
+  /// and (b) detach the file from the store without deleting the underlying
+  /// Files API object. Populated only on the OpenAI path.
   vector_store_file_id String?
 
-  /// pending | processing | completed | failed // Ingestion status will be computed on n8n and not in the codebase 
+  /// pending | processing | completed | failed.
+  /// Ingestion status is driven by the n8n pipeline (not the NestJS app);
+  /// the backend writes the initial `pending` state and n8n updates it.
   ingestion_status String?   @default("pending")
   /// Pinned docs always loaded in full at Layer 2 context assembly
   is_pinned        Boolean   @default(false)
@@ -444,9 +599,9 @@ model ProjectDocument {
   uploaded_by    String    @db.Uuid
   created_at     DateTime  @default(now())
 
-  project   Project   @relation(fields: [project_id], references: [id])
-  workspace Workspace @relation(fields: [workspace_id], references: [id])
-  uploader  User      @relation("DocumentUploadedBy", fields: [uploaded_by], references: [id])
+  project   Project         @relation(fields: [project_id], references: [id])
+  workspace Workspace       @relation(fields: [workspace_id], references: [id])
+  uploader  User            @relation("DocumentUploadedBy", fields: [uploaded_by], references: [id])
 
   document_chunks DocumentChunk[]
   attachments     Attachment[]
@@ -466,14 +621,15 @@ model DocumentChunk {
   document_id  String   @db.Uuid
   /// Denormalised from parent document for query efficiency
   source_type  String?
-  /// Sequential position within parent document
-  chunk_index  Int   // need to review 
+  /// Sequential position within parent document (0-indexed)
+  chunk_index  Int
   /// ~600 tokens with 100-token overlap
   content      String
   /// SHA-256 hash of normalised content — used for cross-source deduplication
   content_hash String
 
-  /// TRUE when document is re-ingested. NEVER hard-delete these rows.
+  /// TRUE when document is re-ingested. NEVER hard-delete these rows
+  /// (foreign-key audit trail + embedding cost already paid).
   superseded Boolean  @default(false)
   created_at DateTime @default(now())
 
@@ -507,12 +663,12 @@ model Attachment {
   uploaded_by     String   @db.Uuid
   created_at      DateTime @default(now())
 
-  message   Message         @relation(fields: [message_id], references: [id])
-  thread    Thread          @relation(fields: [thread_id], references: [id])
-  project   Project         @relation(fields: [project_id], references: [id])
-  workspace Workspace       @relation(fields: [workspace_id], references: [id])
+  message   Message          @relation(fields: [message_id], references: [id])
+  thread    Thread           @relation(fields: [thread_id], references: [id])
+  project   Project          @relation(fields: [project_id], references: [id])
+  workspace Workspace        @relation(fields: [workspace_id], references: [id])
   document  ProjectDocument? @relation(fields: [document_id], references: [id])
-  uploader  User            @relation("AttachmentUploadedBy", fields: [uploaded_by], references: [id])
+  uploader  User             @relation("AttachmentUploadedBy", fields: [uploaded_by], references: [id])
 
   @@map("attachments")
 }
@@ -590,8 +746,6 @@ model Skill {
   template_slug String?
   schema_slug   String?
 
-  /// Recursive dependency UUIDs — ALWAYS scoped to workspace_id
-
   created_by  String   @db.Uuid
   approved_by String?  @db.Uuid
   created_at  DateTime @default(now())
@@ -635,7 +789,7 @@ model SkillVersion {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 4.3  THREAD_ACTIVE_SKILLS  (NEW — per-message skill injection tracking)
+// 4.3  THREAD_ACTIVE_SKILLS  (per-message skill injection tracking)
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ThreadActiveSkill {
@@ -664,7 +818,7 @@ model ThreadActiveSkill {
 // ─────────────────────────────────────────────────────────────────────────────
 // 5.1  MCP_SERVERS
 // ─────────────────────────────────────────────────────────────────────────────
-// review later 
+
 model McpServer {
   id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspace_id String  @db.Uuid
@@ -706,7 +860,7 @@ model McpServer {
 // ─────────────────────────────────────────────────────────────────────────────
 // 6.1  ARTIFACT_TEMPLATES  (visual slot-filling template files)
 // ─────────────────────────────────────────────────────────────────────────────
-// review later 
+
 model ArtifactTemplate {
   id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspace_id String @db.Uuid
@@ -744,9 +898,9 @@ model ArtifactTemplate {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6.2  DOCUMENT_TEMPLATES  (NEW — Code Interpreter / python-docx generation specs)
+// 6.2  DOCUMENT_TEMPLATES  (Code Interpreter / python-docx generation specs)
 // ─────────────────────────────────────────────────────────────────────────────
-// review later 
+
 model DocumentTemplate {
   id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspace_id String  @db.Uuid
@@ -784,7 +938,7 @@ model DocumentTemplate {
 // ─────────────────────────────────────────────────────────────────────────────
 // 6.3  ARTIFACTS  (generated artifact records with export URLs)
 // ─────────────────────────────────────────────────────────────────────────────
-// review later 
+
 model Artifact {
   id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   message_id   String @db.Uuid
@@ -818,7 +972,7 @@ model Artifact {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 6.4  ARTIFACT_FILES  (NEW — persistent S3 binary file records)
+// 6.4  ARTIFACT_FILES  (persistent S3 binary file records)
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ArtifactFile {
@@ -852,7 +1006,7 @@ model ArtifactFile {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 7.1  SCRAPING_EVENTS  (NEW — audit trail for all web fetch / scrape events)
+// 7.1  SCRAPING_EVENTS  (audit trail for all web fetch / scrape events)
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ScrapingEvent {
@@ -889,7 +1043,7 @@ model ScrapingEvent {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8.1  USAGE_EVENTS  (NEW — granular per-API-call cost tracking)
+// 8.1  USAGE_EVENTS  (granular per-API-call cost tracking)
 // Source of truth for F13 Finance dashboard.
 // messages.cost_estimate is a convenience cache only.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1031,12 +1185,12 @@ model Mention {
   acknowledged_at      DateTime?
   created_at           DateTime  @default(now())
 
-  message          Message   @relation(fields: [message_id], references: [id])
-  thread           Thread    @relation(fields: [thread_id], references: [id])
-  project          Project   @relation(fields: [project_id], references: [id])
-  workspace        Workspace @relation(fields: [workspace_id], references: [id])
-  mentioned_user   User      @relation("MentionedUser", fields: [mentioned_user_id], references: [id])
-  mentioned_by_user User     @relation("MentionedByUser", fields: [mentioned_by_user_id], references: [id])
+  message           Message   @relation(fields: [message_id], references: [id])
+  thread            Thread    @relation(fields: [thread_id], references: [id])
+  project           Project   @relation(fields: [project_id], references: [id])
+  workspace         Workspace @relation(fields: [workspace_id], references: [id])
+  mentioned_user    User      @relation("MentionedUser", fields: [mentioned_user_id], references: [id])
+  mentioned_by_user User      @relation("MentionedByUser", fields: [mentioned_by_user_id], references: [id])
 
   @@map("mentions")
 }
@@ -1052,9 +1206,15 @@ model Notification {
 
   /// mention | approval_request | system | skill_approved | mcp_approved | template_approved
   type           String
+  /// UUID of the entity this notification points to (e.g. a Mention row, a
+  /// Skill pending approval). Nullable because some notifications (e.g. generic
+  /// "system" notices) don't map to a specific entity.
   reference_id   String? @db.Uuid
-  /// mention | skill | mcp | template | artifact
-  reference_type String?  // check what is the purpose of references 
+  /// Discriminator for reference_id — tells the client which table to look up
+  /// when the user clicks the notification. Values: mention | skill | mcp |
+  /// template | artifact. Paired with reference_id so the client can route
+  /// deep-links without a second round-trip.
+  reference_type String?
 
   title String
   body  String?

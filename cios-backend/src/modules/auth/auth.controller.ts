@@ -5,6 +5,8 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  // [WORKSPACE INVITE] Accept invite token via /auth/register?token=...
+  Query,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -27,8 +29,17 @@ export class AuthController {
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  async register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
+  // [WORKSPACE INVITE] Register supports optional token query parameter for
+  // invite-email flows that land users directly on /register?token=...
+  async register(@Body() dto: RegisterDto, @Query('token') token?: string) {
+    // ── [WORKSPACE INVITE] BEGIN ─────────────────────────────────────────────
+    // [WORKSPACE INVITE] Support invite token from query string so users who
+    // arrive via /register?token=... are linked to the invited workspace.
+    const registerDto = token ? { ...dto, token } : dto;
+    // [WORKSPACE INVITE] Pass merged DTO so body token and query token are both
+    // accepted without breaking existing registration clients.
+    // ── [WORKSPACE INVITE] END ───────────────────────────────────────────────
+    return this.authService.register(registerDto);
   }
 
   @Public()

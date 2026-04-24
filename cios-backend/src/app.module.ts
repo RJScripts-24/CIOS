@@ -1,17 +1,37 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
+// [WORKSPACE INVITE] ConfigService is required for global ResendModule setup.
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+// [WORKSPACE INVITE] Register Resend globally at app root so WorkspaceService
+// can inject ResendService without re-registering the module elsewhere.
+import { ResendModule } from 'nestjs-resend';
+// [WORKSPACE INVITE] Register WorkspaceModule to expose workspace creation
+// and invitation endpoints. WorkspaceService is also exported for use by
+// AuthModule during the post-registration invite-accept flow.
+import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // [WORKSPACE INVITE] Configure Resend once at app root using RESEND_API_KEY
+    // so invitation emails can be sent from WorkspaceService.
+    ResendModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        apiKey: configService.getOrThrow<string>('RESEND_API_KEY'),
+      }),
+    }),
     PrismaModule,
     AuthModule,
+    // [WORKSPACE INVITE] Register WorkspaceModule to expose workspace creation
+    // and invitation endpoints. WorkspaceService is also exported for use by
+    // AuthModule during the post-registration invite-accept flow.
+    WorkspaceModule,
   ],
   controllers: [AppController],
   providers: [

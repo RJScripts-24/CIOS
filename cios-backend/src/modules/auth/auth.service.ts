@@ -3,6 +3,9 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  // [WORKSPACE INVITE] Used when registration attempts to use a token that
+  // does not belong to the registering email or when token is missing.
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +16,9 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { AuthResponse } from './interfaces/auth-response.interface';
+// [WORKSPACE INVITE] Import WorkspaceService so registration can attach a new
+// user to an invited workspace when an invite token is provided.
+import { WorkspaceService } from '../workspace/workspace.service';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -22,10 +28,53 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    // [WORKSPACE INVITE] Injected to handle post-registration workspace linking
+    // when a user registers via an invitation magic link token.
+    private readonly workspaceService: WorkspaceService,
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
     const email = dto.email.toLowerCase().trim();
+    // [WORKSPACE INVITE] Normalize optional invitation token so query/body
+    // variants with accidental whitespace do not break invite acceptance.
+    const invitationToken = dto.token?.trim();
+
+    // ── [WORKSPACE INVITE] BEGIN ─────────────────────────────────────────────────
+    // [WORKSPACE INVITE] users.workspace_id is required in the current schema,
+    // so registration must resolve a workspace from an invitation token first.
+    if (!invitationToken) {
+      throw new ForbiddenException('Registration requires a valid invitation token');
+    }
+
+    // [WORKSPACE INVITE] Resolve invitation details up-front so we can set the
+    // new user workspace_id at creation time and validate email ownership.
+    const invitation = await this.prisma.workspaceInvitation.findUnique({
+      where: { token: invitationToken },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        workspace_id: true,
+      },
+    });
+
+    // [WORKSPACE INVITE] Reject unknown invite tokens during signup.
+    if (!invitation) {
+      throw new NotFoundException('Invalid invitation token');
+    }
+
+    // [WORKSPACE INVITE] Prevent replay of invitation links that were already used.
+    if (invitation.status === 'accepted') {
+      throw new ConflictException('This invitation has already been used');
+    }
+
+    // [WORKSPACE INVITE] Bind registration strictly to the invited email address.
+    if (invitation.email.toLowerCase() !== email) {
+      throw new ForbiddenException(
+        'This invitation was not sent to your email address',
+      );
+    }
+    // ── [WORKSPACE INVITE] END ───────────────────────────────────────────────────
 
     const existing = await this.prisma.user.findUnique({
       where: { email },
@@ -42,6 +91,9 @@ export class AuthService {
         email,
         password_hash,
         full_name: dto.full_name ?? null,
+        // [WORKSPACE INVITE] Assign the user to the invited workspace at
+        // creation time so required workspace_id constraints are satisfied.
+        workspace_id: invitation.workspace_id,
         role: 'team_member',
       },
       select: {
@@ -55,7 +107,45 @@ export class AuthService {
       },
     });
 
-    const tokens = await this.issueTokens(user);
+    // ── [WORKSPACE INVITE] BEGIN ─────────────────────────────────────────────────
+    // [WORKSPACE INVITE] Track workspace assignment for JWT payload generation.
+    // If invite linking succeeds, the access token should immediately include
+    // the invited workspace_id so the user lands in the correct tenant context.
+    let resolvedWorkspaceId = user.workspace_id;
+
+    // [WORKSPACE INVITE] If a valid invitation token was passed during
+    // registration, link this new user to the invited workspace immediately.
+    if (invitationToken) {
+      try {
+        // [WORKSPACE INVITE] Attempt invite acceptance in non-blocking mode;
+        // registration remains successful even if token handling fails.
+        const invitedUser = await this.workspaceService.acceptInvitationOnRegister(
+          invitationToken,
+          user.id,
+        );
+
+        // [WORKSPACE INVITE] When the token is valid and pending, keep the
+        // updated workspace_id for downstream JWT token issuance.
+        if (invitedUser?.workspace_id) {
+          resolvedWorkspaceId = invitedUser.workspace_id;
+        }
+      } catch (e) {
+        // [WORKSPACE INVITE] Non-blocking: log but do not surface to caller.
+        // Registration is primary; workspace linking is secondary.
+        console.error(
+          '[WorkspaceInvite] acceptInvitationOnRegister failed silently:',
+          e,
+        );
+      }
+    }
+    // ── [WORKSPACE INVITE] END ───────────────────────────────────────────────────
+
+    // [WORKSPACE INVITE] Issue JWTs with effective workspace context so invited
+    // users receive correct tenant claims immediately after registration.
+    const tokens = await this.issueTokens({
+      ...user,
+      workspace_id: resolvedWorkspaceId,
+    });
 
     return {
       ...tokens,

@@ -24,4 +24,12 @@ export class RegisterDto {
   @IsString()
   @MaxLength(100)
   full_name?: string;
+
+  // [WORKSPACE INVITE] Optional invite token passed via /register?token=...
+  // If present, the user was invited via a magic link and should be auto-joined
+  // to the corresponding workspace after account creation.
+  @IsOptional()
+  // [WORKSPACE INVITE] Validate invite token as a string when provided.
+  @IsString()
+  token?: string;
 }

@@ -9,9 +9,15 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RefreshStrategy } from './strategies/refresh.strategy';
+// [WORKSPACE INVITE] Import WorkspaceModule so this module can access
+// WorkspaceService for the acceptInvitationOnRegister flow.
+import { WorkspaceModule } from '../workspace/workspace.module';
 
 @Module({
   imports: [
+    // [WORKSPACE INVITE] Add WorkspaceModule to make WorkspaceService
+    // injectable in AuthService for registration-time invite acceptance.
+    WorkspaceModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
