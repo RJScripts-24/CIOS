@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: cios-backend
+    runtime: node
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm ci --include=dev && npm run render:build
+    startCommand: npm run render:start
+    healthCheckPath: /api/v1/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_POOL_MAX
+        value: "10"
+      - key: DATABASE_CONNECTION_TIMEOUT_MS
+        value: "10000"
+      - key: DATABASE_IDLE_TIMEOUT_MS
+        value: "30000"
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false

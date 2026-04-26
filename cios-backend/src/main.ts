@@ -7,10 +7,15 @@ import {
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const port = Number(process.env.PORT ?? 3000);
+  const host = process.env.HOST ?? '0.0.0.0';
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter(),
   );
+
+  app.enableShutdownHooks();
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -25,6 +30,6 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
-  await app.listen(3000, '0.0.0.0');
+  await app.listen(port, host);
 }
 bootstrap();
