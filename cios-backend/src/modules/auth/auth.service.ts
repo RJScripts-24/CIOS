@@ -198,6 +198,121 @@ export class AuthService {
     };
   }
 
+  async googleLogin(code: string): Promise<AuthResponse> {
+    // Exchange the authorization code for tokens using Google's OAuth2 endpoint.
+    // This uses the google-auth-library approach via fetch - no extra passport call needed here.
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: this.configService.getOrThrow<string>('GOOGLE_CLIENT_ID'),
+        client_secret:
+          this.configService.getOrThrow<string>('GOOGLE_CLIENT_SECRET'),
+        redirect_uri: this.configService.getOrThrow<string>('GOOGLE_CALLBACK_URL'),
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      throw new UnauthorizedException(
+        'Failed to exchange Google authorization code',
+      );
+    }
+
+    const tokenData = (await tokenRes.json()) as {
+      id_token?: string;
+      error?: string;
+    };
+
+    if (!tokenData.id_token) {
+      throw new UnauthorizedException('Google did not return an ID token');
+    }
+
+    // Decode the ID token payload (we verify by checking it came from Google's endpoint above)
+    const [, payloadBase64] = tokenData.id_token.split('.');
+    const payload = JSON.parse(
+      Buffer.from(payloadBase64, 'base64url').toString('utf8'),
+    ) as {
+      sub: string;
+      email: string;
+      name?: string;
+      picture?: string;
+      email_verified?: boolean;
+    };
+
+    if (!payload.email) {
+      throw new UnauthorizedException('Google account has no email address');
+    }
+
+    const email = payload.email.toLowerCase().trim();
+
+    // Upsert user: if exists update google_id, if not create with no password_hash
+    let user = await this.prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        avatar_url: true,
+        default_model: true,
+        workspace_id: true,
+        is_active: true,
+      },
+    });
+
+    if (user) {
+      // Update google_id on existing user
+      await this.prisma.user.update({
+        where: { email },
+        data: { google_id: payload.sub },
+      });
+
+      if (!user.is_active) {
+        throw new UnauthorizedException(
+          'Your account has been deactivated. Contact your admin.',
+        );
+      }
+    } else {
+      // Create new user - no password_hash for SSO users
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          google_id: payload.sub,
+          full_name: payload.name ?? null,
+          avatar_url: payload.picture ?? null,
+          role: 'team_member',
+          // workspace_id is null until the user joins a workspace
+        },
+        select: {
+          id: true,
+          email: true,
+          full_name: true,
+          role: true,
+          avatar_url: true,
+          default_model: true,
+          workspace_id: true,
+          is_active: true,
+        },
+      });
+    }
+
+    const tokens = await this.issueTokens(user);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        avatar_url: user.avatar_url,
+        default_model: user.default_model,
+      },
+    };
+  }
+
   async refreshTokens(
     userId: string,
     rawRefreshToken: string,
@@ -285,7 +400,34 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    // Fetch all project memberships for this user with project summary
+    const memberships = await this.prisma.projectMember.findMany({
+      where: { user_id: userId },
+      select: {
+        access_level: true,
+        project: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    const assigned_projects = memberships.map((m) => ({
+      id: m.project.id,
+      name: m.project.name,
+      type: m.project.type,
+      status: m.project.status,
+      access_level: m.access_level,
+    }));
+
+    return {
+      ...user,
+      assigned_projects,
+    };
   }
 
   private async issueTokens(user: {

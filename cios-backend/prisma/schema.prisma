@@ -158,9 +158,10 @@ model WorkspaceInvitation {
 
 model User {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspace_id     String   @db.Uuid
+  workspace_id     String?  @db.Uuid
   email            String   @unique
   password_hash    String?
+  google_id        String?  @unique
   full_name        String?
   avatar_url       String?
   role             UserRole @default(team_member)
@@ -171,7 +172,7 @@ model User {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  workspace      Workspace      @relation(fields: [workspace_id], references: [id])
+  workspace      Workspace?     @relation(fields: [workspace_id], references: [id])
   // [CHANGE 2] RefreshToken relation stays as 1-to-many (NOT 1-to-1).
   // One user may have many live refresh tokens — one per device/session.
   refresh_tokens RefreshToken[]

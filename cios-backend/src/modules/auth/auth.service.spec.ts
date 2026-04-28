@@ -51,6 +51,9 @@ const mockPrismaService = {
     create: jest.fn(),
     update: jest.fn(),
   },
+  projectMember: {
+    findMany: jest.fn(),
+  },
 };
 
 const mockWorkspaceService = {
@@ -254,6 +257,7 @@ describe('AuthService', () => {
 
     it('should return user data if found', async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      mockPrismaService.projectMember.findMany.mockResolvedValue([]);
 
       const result = await service.getMe('uuid-1234');
       expect(result.email).toBe('test@example.com');

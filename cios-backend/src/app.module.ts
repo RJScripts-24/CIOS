@@ -14,6 +14,7 @@ import { ResendModule } from 'nestjs-resend';
 // AuthModule during the post-registration invite-accept flow.
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from './modules/auth/guards/roles.guard';
 
 @Module({
   imports: [
@@ -39,6 +40,10 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

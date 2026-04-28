@@ -9,6 +9,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RefreshStrategy } from './strategies/refresh.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
 // [WORKSPACE INVITE] Import WorkspaceModule so this module can access
 // WorkspaceService for the acceptInvitationOnRegister flow.
 import { WorkspaceModule } from '../workspace/workspace.module';
@@ -32,7 +33,14 @@ import { WorkspaceModule } from '../workspace/workspace.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RefreshStrategy, JwtAuthGuard, RolesGuard],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RefreshStrategy,
+    GoogleStrategy,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
   exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule],
 })
 export class AuthModule {}

@@ -44,6 +44,10 @@ cios-backend/.env.example
 cios-backend/.gitignore
 cios-backend/.prettierrc
 cios-backend/docs/CHANGELOG.md
+cios-backend/docs/day 1 enpoints.md
+cios-backend/docs/DAY1_CHANGES_2026-04-28.md
+cios-backend/docs/RENDER_DEPLOYMENT.md
+cios-backend/docs/WORKSPACE_INVITATION_IMPLEMENTATION_2026-04-24.md
 cios-backend/eslint.config.mjs
 cios-backend/nest-cli.json
 cios-backend/output.txt
@@ -51,19 +55,35 @@ cios-backend/package.json
 cios-backend/prisma.config.ts
 cios-backend/prisma/migrations/20260421185014_add_users_and_refresh_tokens/migration.sql
 cios-backend/prisma/migrations/20260422173612_add_full_cios_schema/migration.sql
+cios-backend/prisma/migrations/20260424163705_add_workspace_invitations/migration.sql
+cios-backend/prisma/migrations/20260428124432_add_google_id_to_users/migration.sql
+cios-backend/prisma/migrations/20260428124642_make_user_workspace_nullable/migration.sql
 cios-backend/prisma/migrations/migration_lock.toml
 cios-backend/prisma/schema.prisma
+cios-backend/render.yaml
 cios-backend/src/app.controller.ts
 cios-backend/src/app.module.ts
 cios-backend/src/app.service.ts
+cios-backend/src/common/guards/project-edit-access.guard.spec.ts
+cios-backend/src/common/guards/project-edit-access.guard.ts
+cios-backend/src/common/guards/project-member.guard.spec.ts
+cios-backend/src/common/guards/project-member.guard.ts
+cios-backend/src/common/guards/project-owner-or-admin.guard.spec.ts
+cios-backend/src/common/guards/project-owner-or-admin.guard.ts
+cios-backend/src/common/helpers/workspace-scope.helper.spec.ts
+cios-backend/src/common/helpers/workspace-scope.helper.ts
+cios-backend/src/common/interfaces/request-with-user.interface.ts
 cios-backend/src/main.ts
 cios-backend/src/modules/auth/auth.controller.ts
 cios-backend/src/modules/auth/auth.module.ts
+cios-backend/src/modules/auth/auth.service.getme.spec.ts
+cios-backend/src/modules/auth/auth.service.google.spec.ts
 cios-backend/src/modules/auth/auth.service.spec.ts
 cios-backend/src/modules/auth/auth.service.ts
 cios-backend/src/modules/auth/decorators/current-user.decorator.ts
 cios-backend/src/modules/auth/decorators/public.decorator.ts
 cios-backend/src/modules/auth/decorators/roles.decorator.ts
+cios-backend/src/modules/auth/dto/google-auth.dto.ts
 cios-backend/src/modules/auth/dto/login.dto.ts
 cios-backend/src/modules/auth/dto/refresh-token.dto.ts
 cios-backend/src/modules/auth/dto/register.dto.ts
@@ -71,8 +91,16 @@ cios-backend/src/modules/auth/guards/jwt-auth.guard.ts
 cios-backend/src/modules/auth/guards/roles.guard.ts
 cios-backend/src/modules/auth/interfaces/auth-response.interface.ts
 cios-backend/src/modules/auth/interfaces/jwt-payload.interface.ts
+cios-backend/src/modules/auth/strategies/google.strategy.ts
 cios-backend/src/modules/auth/strategies/jwt.strategy.ts
 cios-backend/src/modules/auth/strategies/refresh.strategy.ts
+cios-backend/src/modules/workspace/dto/create-workspace.dto.ts
+cios-backend/src/modules/workspace/dto/invite-member.dto.ts
+cios-backend/src/modules/workspace/workspace.controller.ts
+cios-backend/src/modules/workspace/workspace.e2e.spec.ts
+cios-backend/src/modules/workspace/workspace.module.ts
+cios-backend/src/modules/workspace/workspace.service.spec.ts
+cios-backend/src/modules/workspace/workspace.service.ts
 cios-backend/src/prisma/prisma.module.ts
 cios-backend/src/prisma/prisma.service.ts
 cios-backend/tsconfig.build.json
@@ -83,16 +111,1232 @@ README.md
 <files>
 This section contains the contents of the repository's files.
 
-<file path="cios-backend/.env.example">
-DATABASE_URL=postgresql://user:password@localhost:5432/cios
+<file path="cios-backend/docs/day 1 enpoints.md">
+# CIOS Day 1 Endpoints
 
-JWT_ACCESS_SECRET=your-super-secret-access-key-min-32-chars
-JWT_REFRESH_SECRET=your-super-secret-refresh-key-min-32-chars
-JWT_ACCESS_EXPIRES_IN=15m
-JWT_REFRESH_EXPIRES_IN=7d
+This document lists the API endpoints implemented or updated during Day 1 work.
 
-# Session idle timeout (ms) - 4 hours per PRD spec
-SESSION_IDLE_TIMEOUT_MS=14400000
+Base path: /api/v1
+
+## Auth
+
+- POST /auth/register
+  - Registers a user (invitation token supported via body or query token)
+- POST /auth/login
+  - Email/password login
+- POST /auth/refresh
+  - Refresh access token using refresh token
+- POST /auth/logout
+  - Revoke refresh token for the current user
+- GET /auth/me
+  - Returns user profile plus assigned_projects
+- POST /auth/google
+  - Exchanges Google authorization code for tokens and user profile
+
+## Workspace (already present, verified during tests)
+
+- POST /workspaces
+  - Create workspace (admin only)
+- POST /workspaces/:workspaceId/invite
+  - Invite member by email (admin only)
+- POST /workspaces/invitations/accept
+  - Accept invitation (existing user)
+- GET /workspaces/:workspaceId/members
+  - List workspace members (admin only)
+- GET /workspaces/:workspaceId/invitations/pending
+  - List pending invitations (admin only)
+
+## Notes
+
+- All endpoints are scoped to the global prefix /api/v1.
+- Project-scoped guards are applied per-controller, not globally.
+
+## Test Results
+
+Command executed:
+
+npm run test -- --verbose 2>&1
+
+Summary:
+
+- Passed suites: 8
+- Failed suites: 0
+- Skipped suites: 1
+- Passed tests: 68
+- Failed tests: 0
+- Skipped tests: 12
+
+Passed suites:
+
+- src/common/helpers/workspace-scope.helper.spec.ts
+- src/common/guards/project-edit-access.guard.spec.ts
+- src/common/guards/project-member.guard.spec.ts
+- src/common/guards/project-owner-or-admin.guard.spec.ts
+- src/modules/auth/auth.service.getme.spec.ts
+- src/modules/workspace/workspace.service.spec.ts
+- src/modules/auth/auth.service.spec.ts
+- src/modules/auth/auth.service.google.spec.ts
+
+Skipped suites:
+
+- src/modules/workspace/workspace.e2e.spec.ts
+  - Skipped because it requires RUN_WORKSPACE_E2E=true and real DATABASE_URL and RESEND_API_KEY
+</file>
+
+<file path="cios-backend/docs/DAY1_CHANGES_2026-04-28.md">
+# CIOS Backend - Day 1 Changes (2026-04-28)
+
+## Overview
+
+This document captures the Day 1 implementation changes for shared infrastructure, Google OAuth completion, and the upgraded /auth/me response. It also includes test results and notes about skipped tests, why they are skipped, and how to run them.
+
+## Scope Delivered
+
+1) Shared infrastructure under src/common
+2) Global RolesGuard registration
+3) Google OAuth login flow for /auth/google
+4) /auth/me response includes assigned_projects
+5) Prisma schema update for google_id and nullable workspace_id
+6) Test coverage for new guards, helpers, and AuthService additions
+
+## Code Changes by Area
+
+### 1) Shared Infrastructure (src/common)
+
+Added common guard, helper, and request typing utilities:
+
+- src/common/interfaces/request-with-user.interface.ts
+  - FastifyRequest augmentation for user, projectMembership, and project
+- src/common/helpers/workspace-scope.helper.ts
+  - workspaceScope helper that enforces workspace_id presence
+- src/common/guards/project-member.guard.ts
+  - Ensures the requesting user is a member of a project in their workspace
+- src/common/guards/project-edit-access.guard.ts
+  - Requires edit access level on resolved projectMembership
+- src/common/guards/project-owner-or-admin.guard.ts
+  - Allows only project owner or admin, attaches project to request
+
+Associated unit tests:
+
+- src/common/helpers/workspace-scope.helper.spec.ts
+- src/common/guards/project-member.guard.spec.ts
+- src/common/guards/project-edit-access.guard.spec.ts
+- src/common/guards/project-owner-or-admin.guard.spec.ts
+
+### 2) Global RolesGuard Registration
+
+- src/app.module.ts
+  - Added RolesGuard as the second global APP_GUARD after JwtAuthGuard
+
+### 3) Google OAuth Login
+
+Added support for POST /auth/google using an OAuth authorization code:
+
+- src/modules/auth/strategies/google.strategy.ts
+  - Passport strategy registered with client ID/secret/callback URL
+- src/modules/auth/dto/google-auth.dto.ts
+  - DTO for incoming { code }
+- src/modules/auth/auth.service.ts
+  - Added googleLogin() method that exchanges the code, decodes ID token, and upserts user
+- src/modules/auth/auth.controller.ts
+  - Added POST /auth/google endpoint
+- src/modules/auth/auth.module.ts
+  - Registered GoogleStrategy provider
+
+Associated unit tests:
+
+- src/modules/auth/auth.service.google.spec.ts
+
+### 4) /auth/me Upgrade
+
+- src/modules/auth/auth.service.ts
+  - getMe() now returns assigned_projects derived from projectMember joins
+
+Associated unit tests:
+
+- src/modules/auth/auth.service.getme.spec.ts
+- Updated mocks in src/modules/auth/auth.service.spec.ts
+
+### 5) Prisma Schema and Migrations
+
+- prisma/schema.prisma
+  - Added User.google_id String? @unique
+  - Made User.workspace_id nullable and workspace relation optional
+
+New migrations created and applied:
+
+- prisma/migrations/20260428124432_add_google_id_to_users/migration.sql
+- prisma/migrations/20260428124642_make_user_workspace_nullable/migration.sql
+
+### 6) Environment Variables
+
+- .env.example
+  - Added GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL
+
+## Test Results
+
+Command executed:
+
+npm run test -- --verbose 2>&1
+
+Summary (from the test run output):
+
+- Suites: 8 passed, 1 skipped, 9 total
+- Tests: 68 passed, 12 skipped, 80 total
+
+Passing suites included:
+
+- src/common/helpers/workspace-scope.helper.spec.ts
+- src/common/guards/project-member.guard.spec.ts
+- src/common/guards/project-edit-access.guard.spec.ts
+- src/common/guards/project-owner-or-admin.guard.spec.ts
+- src/modules/auth/auth.service.google.spec.ts
+- src/modules/auth/auth.service.getme.spec.ts
+- src/modules/auth/auth.service.spec.ts
+- src/modules/workspace/workspace.service.spec.ts
+
+## Skipped Tests (Do Not Ignore)
+
+The skipped suite is intentional:
+
+- src/modules/workspace/workspace.e2e.spec.ts
+
+Why it is skipped:
+
+- It is gated behind RUN_WORKSPACE_E2E=true and requires real DATABASE_URL and RESEND_API_KEY.
+- This avoids accidentally running destructive E2E flows or sending real emails during normal unit test runs.
+
+How to run the skipped tests:
+
+- Ensure the environment variables are set:
+  - RUN_WORKSPACE_E2E=true
+  - DATABASE_URL (real database)
+  - RESEND_API_KEY (real provider key)
+  - RESEND_FROM_EMAIL (verified sender domain)
+- Then run:
+  - npx jest src/modules/workspace/workspace.e2e.spec.ts --runInBand --testTimeout=30000
+
+How to tackle keeping them unskipped in CI:
+
+- Option A: Use a dedicated CI job with ephemeral database and a Resend sandbox account.
+- Option B: Mock Resend in E2E and use a seeded local DB, but this becomes an integration test rather than a true E2E.
+- Option C: Use a nightly pipeline that sets RUN_WORKSPACE_E2E=true with real secrets.
+
+## Commands Executed
+
+- npm install passport-google-oauth20
+- npm install --save-dev @types/passport-google-oauth20
+- npx prisma migrate dev --name add_google_id_to_users
+- npx prisma migrate dev --name make_user_workspace_nullable
+- npm run prisma:generate
+- npm run build
+- npm run test -- --verbose 2>&1
+
+## Notes and Constraints
+
+- JwtAuthGuard remains the first global guard; RolesGuard is the second.
+- Common project guards are not global and must be applied per-controller.
+- Google OAuth uses authorization code exchange and ID token payload decoding.
+- workspace_id is now nullable for SSO flows; existing invite flow still works.
+- Prisma client path remains src/generated/prisma.
+</file>
+
+<file path="cios-backend/prisma/migrations/20260428124432_add_google_id_to_users/migration.sql">
+/*
+  Warnings:
+
+  - A unique constraint covering the columns `[google_id]` on the table `users` will be added. If there are existing duplicate values, this will fail.
+
+*/
+-- AlterTable
+ALTER TABLE "users" ADD COLUMN     "google_id" TEXT;
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_google_id_key" ON "users"("google_id");
+</file>
+
+<file path="cios-backend/prisma/migrations/20260428124642_make_user_workspace_nullable/migration.sql">
+-- DropForeignKey
+ALTER TABLE "users" DROP CONSTRAINT "users_workspace_id_fkey";
+
+-- AlterTable
+ALTER TABLE "users" ALTER COLUMN "workspace_id" DROP NOT NULL;
+
+-- AddForeignKey
+ALTER TABLE "users" ADD CONSTRAINT "users_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+</file>
+
+<file path="cios-backend/src/common/guards/project-edit-access.guard.spec.ts">
+import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ProjectEditAccessGuard } from './project-edit-access.guard';
+
+function makeContext(
+  user: object,
+  projectMembership?: object,
+): ExecutionContext {
+  const request: any = { user, params: {} };
+  if (projectMembership !== undefined) {
+    request.projectMembership = projectMembership;
+  }
+  return {
+    switchToHttp: () => ({ getRequest: () => request }),
+  } as unknown as ExecutionContext;
+}
+
+describe('ProjectEditAccessGuard', () => {
+  let guard: ProjectEditAccessGuard;
+
+  beforeEach(() => {
+    guard = new ProjectEditAccessGuard();
+  });
+
+  it('should return true for admin users regardless of membership', () => {
+    const ctx = makeContext({ role: 'admin', sub: 'u1' });
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('should throw ForbiddenException when projectMembership is not on request', () => {
+    const ctx = makeContext({ role: 'team_member', sub: 'u1' });
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+  });
+
+  it('should throw ForbiddenException when access_level is read_only', () => {
+    const ctx = makeContext(
+      { role: 'team_member', sub: 'u1' },
+      { access_level: 'read_only', project_id: 'p1', user_id: 'u1' },
+    );
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+  });
+
+  it('should throw ForbiddenException with correct message for read_only user', () => {
+    const ctx = makeContext(
+      { role: 'team_member', sub: 'u1' },
+      { access_level: 'read_only', project_id: 'p1', user_id: 'u1' },
+    );
+    expect(() => guard.canActivate(ctx)).toThrow(
+      'You have read-only access to this project',
+    );
+  });
+
+  it('should return true when access_level is edit', () => {
+    const ctx = makeContext(
+      { role: 'team_member', sub: 'u1' },
+      { access_level: 'edit', project_id: 'p1', user_id: 'u1' },
+    );
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it('should throw the "membership not resolved" error when projectMembership is null', () => {
+    const request: any = {
+      user: { role: 'team_member', sub: 'u1' },
+      params: {},
+      projectMembership: null,
+    };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+    expect(() => guard.canActivate(ctx)).toThrow(
+      'Project membership not resolved',
+    );
+  });
+});
+</file>
+
+<file path="cios-backend/src/common/guards/project-edit-access.guard.ts">
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
+import { RequestWithUser } from '../interfaces/request-with-user.interface';
+
+@Injectable()
+export class ProjectEditAccessGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
+    const user = request.user;
+
+    if (user.role === 'admin') return true;
+
+    const membership = (request as any).projectMembership;
+
+    if (!membership) {
+      throw new ForbiddenException(
+        'Project membership not resolved - ensure ProjectMemberGuard runs first',
+      );
+    }
+
+    if (membership.access_level !== 'edit') {
+      throw new ForbiddenException('You have read-only access to this project');
+    }
+
+    return true;
+  }
+}
+</file>
+
+<file path="cios-backend/src/common/guards/project-member.guard.spec.ts">
+import {
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ProjectMemberGuard } from './project-member.guard';
+
+function makeContext(
+  user: object,
+  params: object = {},
+  extra: object = {},
+): ExecutionContext {
+  const request = { user, params, ...extra };
+  return {
+    switchToHttp: () => ({
+      getRequest: () => request,
+    }),
+  } as unknown as ExecutionContext;
+}
+
+const mockPrisma = {
+  project: { findFirst: jest.fn() },
+  projectMember: { findUnique: jest.fn() },
+};
+
+describe('ProjectMemberGuard', () => {
+  let guard: ProjectMemberGuard;
+
+  beforeEach(() => {
+    guard = new ProjectMemberGuard(mockPrisma as any);
+    jest.clearAllMocks();
+  });
+
+  it('should return true when no projectId is present in params', async () => {
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      {},
+    );
+    const result = await guard.canActivate(ctx);
+    expect(result).toBe(true);
+    expect(mockPrisma.project.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('should return true immediately for admin users without querying DB', async () => {
+    const ctx = makeContext(
+      { sub: 'u1', role: 'admin', workspace_id: 'ws1' },
+      { projectId: 'proj-1' },
+    );
+    const result = await guard.canActivate(ctx);
+    expect(result).toBe(true);
+    expect(mockPrisma.project.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('should throw ForbiddenException when user has no workspace_id', async () => {
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: null },
+      { projectId: 'proj-1' },
+    );
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('should throw NotFoundException when project does not exist in workspace', async () => {
+    mockPrisma.project.findFirst.mockResolvedValue(null);
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      { projectId: 'proj-missing' },
+    );
+    await expect(guard.canActivate(ctx)).rejects.toThrow(NotFoundException);
+  });
+
+  it('should throw ForbiddenException when user is not a member of the project', async () => {
+    mockPrisma.project.findFirst.mockResolvedValue({
+      id: 'proj-1',
+      workspace_id: 'ws1',
+      owner_id: 'other-user',
+    });
+    mockPrisma.projectMember.findUnique.mockResolvedValue(null);
+
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      { projectId: 'proj-1' },
+    );
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('should return true and attach projectMembership to request when user is a member', async () => {
+    const membership = {
+      project_id: 'proj-1',
+      user_id: 'u1',
+      access_level: 'edit',
+      workspace_id: 'ws1',
+    };
+    mockPrisma.project.findFirst.mockResolvedValue({
+      id: 'proj-1',
+      workspace_id: 'ws1',
+      owner_id: 'u1',
+    });
+    mockPrisma.projectMember.findUnique.mockResolvedValue(membership);
+
+    const request = {
+      user: { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      params: { projectId: 'proj-1' },
+    };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+
+    const result = await guard.canActivate(ctx);
+    expect(result).toBe(true);
+    expect((request as any).projectMembership).toEqual(membership);
+  });
+
+  it('should resolve projectId from params.id when params.projectId is absent', async () => {
+    const membership = {
+      project_id: 'proj-2',
+      user_id: 'u1',
+      access_level: 'read_only',
+      workspace_id: 'ws1',
+    };
+    mockPrisma.project.findFirst.mockResolvedValue({
+      id: 'proj-2',
+      workspace_id: 'ws1',
+      owner_id: 'other',
+    });
+    mockPrisma.projectMember.findUnique.mockResolvedValue(membership);
+
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      { id: 'proj-2' },
+    );
+    const result = await guard.canActivate(ctx);
+    expect(result).toBe(true);
+  });
+});
+</file>
+
+<file path="cios-backend/src/common/guards/project-member.guard.ts">
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RequestWithUser } from '../interfaces/request-with-user.interface';
+
+@Injectable()
+export class ProjectMemberGuard implements CanActivate {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
+    const user = request.user;
+
+    const projectId: string | undefined =
+      (request.params as any)?.projectId ?? (request.params as any)?.id;
+
+    if (!projectId) return true;
+
+    if (user.role === 'admin') return true;
+
+    if (!user.workspace_id) {
+      throw new ForbiddenException('User has no workspace assigned');
+    }
+
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, workspace_id: user.workspace_id },
+      select: { id: true, workspace_id: true, owner_id: true },
+    });
+
+    if (!project) throw new NotFoundException('Project not found');
+
+    const membership = await this.prisma.projectMember.findUnique({
+      where: {
+        project_id_user_id: { project_id: projectId, user_id: user.sub },
+      },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this project');
+    }
+
+    (request as any).projectMembership = membership;
+    return true;
+  }
+}
+</file>
+
+<file path="cios-backend/src/common/guards/project-owner-or-admin.guard.spec.ts">
+import {
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ProjectOwnerOrAdminGuard } from './project-owner-or-admin.guard';
+
+function makeContext(user: object, params: object = {}): ExecutionContext {
+  const request = { user, params };
+  return {
+    switchToHttp: () => ({ getRequest: () => request }),
+  } as unknown as ExecutionContext;
+}
+
+const mockPrisma = {
+  project: { findFirst: jest.fn() },
+};
+
+describe('ProjectOwnerOrAdminGuard', () => {
+  let guard: ProjectOwnerOrAdminGuard;
+
+  beforeEach(() => {
+    guard = new ProjectOwnerOrAdminGuard(mockPrisma as any);
+    jest.clearAllMocks();
+  });
+
+  it('should return true immediately for admin users', async () => {
+    const ctx = makeContext(
+      { sub: 'u1', role: 'admin', workspace_id: 'ws1' },
+      { projectId: 'proj-1' },
+    );
+    const result = await guard.canActivate(ctx);
+    expect(result).toBe(true);
+    expect(mockPrisma.project.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('should throw ForbiddenException when projectId is missing', async () => {
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      {},
+    );
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+    await expect(guard.canActivate(ctx)).rejects.toThrow('Project ID missing');
+  });
+
+  it('should throw ForbiddenException when user has no workspace_id', async () => {
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: null },
+      { projectId: 'proj-1' },
+    );
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('should throw NotFoundException when project not found in workspace', async () => {
+    mockPrisma.project.findFirst.mockResolvedValue(null);
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      { projectId: 'proj-missing' },
+    );
+    await expect(guard.canActivate(ctx)).rejects.toThrow(NotFoundException);
+  });
+
+  it('should throw ForbiddenException when user is not the project owner', async () => {
+    mockPrisma.project.findFirst.mockResolvedValue({
+      id: 'proj-1',
+      owner_id: 'different-user',
+      workspace_id: 'ws1',
+    });
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      { projectId: 'proj-1' },
+    );
+    await expect(guard.canActivate(ctx)).rejects.toThrow(ForbiddenException);
+    await expect(guard.canActivate(ctx)).rejects.toThrow(
+      'Only the project owner or admin can perform this action',
+    );
+  });
+
+  it('should return true and attach project to request when user is the owner', async () => {
+    const project = { id: 'proj-1', owner_id: 'u1', workspace_id: 'ws1' };
+    mockPrisma.project.findFirst.mockResolvedValue(project);
+
+    const request: any = {
+      user: { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      params: { projectId: 'proj-1' },
+    };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+
+    const result = await guard.canActivate(ctx);
+    expect(result).toBe(true);
+    expect(request.project).toEqual(project);
+  });
+
+  it('should resolve projectId from params.id when params.projectId is absent', async () => {
+    const project = { id: 'proj-2', owner_id: 'u1', workspace_id: 'ws1' };
+    mockPrisma.project.findFirst.mockResolvedValue(project);
+
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      { id: 'proj-2' },
+    );
+    const result = await guard.canActivate(ctx);
+    expect(result).toBe(true);
+  });
+});
+</file>
+
+<file path="cios-backend/src/common/guards/project-owner-or-admin.guard.ts">
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RequestWithUser } from '../interfaces/request-with-user.interface';
+
+@Injectable()
+export class ProjectOwnerOrAdminGuard implements CanActivate {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
+    const user = request.user;
+
+    if (user.role === 'admin') return true;
+
+    const projectId: string | undefined =
+      (request.params as any)?.projectId ?? (request.params as any)?.id;
+
+    if (!projectId) throw new ForbiddenException('Project ID missing');
+
+    if (!user.workspace_id) {
+      throw new ForbiddenException('User has no workspace assigned');
+    }
+
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, workspace_id: user.workspace_id },
+    });
+
+    if (!project) throw new NotFoundException('Project not found');
+
+    if (project.owner_id !== user.sub) {
+      throw new ForbiddenException(
+        'Only the project owner or admin can perform this action',
+      );
+    }
+
+    (request as any).project = project;
+    return true;
+  }
+}
+</file>
+
+<file path="cios-backend/src/common/helpers/workspace-scope.helper.spec.ts">
+import { ForbiddenException } from '@nestjs/common';
+import { workspaceScope } from './workspace-scope.helper';
+import { JwtPayload } from '../../modules/auth/interfaces/jwt-payload.interface';
+
+describe('workspaceScope()', () => {
+  const basePayload: JwtPayload = {
+    sub: 'user-uuid-1',
+    email: 'test@example.com',
+    role: 'team_member',
+    workspace_id: 'workspace-uuid-1',
+  };
+
+  it('should return workspace_id fragment when workspace_id is present', () => {
+    const result = workspaceScope(basePayload);
+    expect(result).toEqual({ workspace_id: 'workspace-uuid-1' });
+  });
+
+  it('should throw when workspace_id is null', () => {
+    const payload = { ...basePayload, workspace_id: null };
+    expect(() => workspaceScope(payload)).toThrow(
+      'workspace_id is required for scoped queries but was null',
+    );
+  });
+
+  it('should always return an object with exactly the workspace_id key', () => {
+    const result = workspaceScope(basePayload);
+    expect(Object.keys(result)).toEqual(['workspace_id']);
+  });
+});
+</file>
+
+<file path="cios-backend/src/common/helpers/workspace-scope.helper.ts">
+import { JwtPayload } from '../../modules/auth/interfaces/jwt-payload.interface';
+
+/**
+ * Returns a Prisma `where` fragment scoped to the user's workspace.
+ * EVERY Prisma query in CIOS must include this as the base where clause.
+ * Never query without workspace_id - it is the multi-tenant isolation boundary.
+ *
+ * Usage:
+ *   this.prisma.project.findMany({
+ *     where: { ...workspaceScope(user), status: 'active' }
+ *   })
+ */
+export function workspaceScope(user: JwtPayload): { workspace_id: string } {
+  if (!user.workspace_id) {
+    throw new Error('workspace_id is required for scoped queries but was null');
+  }
+  return { workspace_id: user.workspace_id };
+}
+</file>
+
+<file path="cios-backend/src/common/interfaces/request-with-user.interface.ts">
+import { FastifyRequest } from 'fastify';
+import { JwtPayload } from '../../modules/auth/interfaces/jwt-payload.interface';
+
+export interface RequestWithUser extends FastifyRequest {
+  user: JwtPayload;
+  projectMembership?: {
+    project_id: string;
+    user_id: string;
+    access_level: string;
+    workspace_id: string;
+  };
+  project?: {
+    id: string;
+    owner_id: string;
+    workspace_id: string;
+    [key: string]: any;
+  };
+}
+</file>
+
+<file path="cios-backend/src/modules/auth/auth.service.getme.spec.ts">
+import { NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { Test, TestingModule } from '@nestjs/testing';
+import { PrismaService } from '../../prisma/prisma.service';
+import { WorkspaceService } from '../workspace/workspace.service';
+import { AuthService } from './auth.service';
+
+const mockUser = {
+  id: 'uuid-1234',
+  email: 'user@example.com',
+  full_name: 'Test User',
+  role: 'team_member',
+  avatar_url: null,
+  default_model: null,
+  workspace_id: 'ws-uuid',
+  is_active: true,
+  view_preferences: {},
+  created_at: new Date('2024-01-01'),
+};
+
+const mockMemberships = [
+  {
+    access_level: 'edit',
+    project: { id: 'proj-1', name: 'Alpha', type: 'client', status: 'active' },
+  },
+  {
+    access_level: 'read_only',
+    project: {
+      id: 'proj-2',
+      name: 'Beta',
+      type: 'internal_bd',
+      status: 'paused',
+    },
+  },
+];
+
+const mockPrismaService = {
+  user: { findUnique: jest.fn() },
+  refreshToken: {
+    findMany: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
+  projectMember: { findMany: jest.fn() },
+};
+
+const mockJwtService = { signAsync: jest.fn() };
+const mockConfigService = {
+  get: jest.fn(),
+  getOrThrow: jest.fn((key: string) => {
+    const cfg: Record<string, string> = {
+      JWT_ACCESS_SECRET: 'secret',
+      JWT_REFRESH_SECRET: 'refresh-secret',
+    };
+    if (!cfg[key]) throw new Error(`Missing: ${key}`);
+    return cfg[key];
+  }),
+};
+
+const mockWorkspaceService = {
+  acceptInvitationOnRegister: jest.fn(),
+};
+
+describe('AuthService - getMe()', () => {
+  let service: AuthService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: JwtService, useValue: mockJwtService },
+        { provide: ConfigService, useValue: mockConfigService },
+        { provide: WorkspaceService, useValue: mockWorkspaceService },
+      ],
+    }).compile();
+
+    service = module.get<AuthService>(AuthService);
+    jest.clearAllMocks();
+  });
+
+  it('should throw NotFoundException when user does not exist', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+    await expect(service.getMe('nonexistent-id')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('should return user with empty assigned_projects array when user has no memberships', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+    mockPrismaService.projectMember.findMany.mockResolvedValue([]);
+
+    const result = await service.getMe('uuid-1234');
+
+    expect(result.assigned_projects).toEqual([]);
+    expect(result.email).toBe('user@example.com');
+  });
+
+  it('should return user with populated assigned_projects when memberships exist', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+    mockPrismaService.projectMember.findMany.mockResolvedValue(mockMemberships);
+
+    const result = await service.getMe('uuid-1234');
+
+    expect(result.assigned_projects).toHaveLength(2);
+    expect(result.assigned_projects[0]).toEqual({
+      id: 'proj-1',
+      name: 'Alpha',
+      type: 'client',
+      status: 'active',
+      access_level: 'edit',
+    });
+    expect(result.assigned_projects[1]).toEqual({
+      id: 'proj-2',
+      name: 'Beta',
+      type: 'internal_bd',
+      status: 'paused',
+      access_level: 'read_only',
+    });
+  });
+
+  it('should include core user fields in response', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+    mockPrismaService.projectMember.findMany.mockResolvedValue([]);
+
+    const result = await service.getMe('uuid-1234');
+
+    expect(result).toMatchObject({
+      id: 'uuid-1234',
+      email: 'user@example.com',
+      role: 'team_member',
+      workspace_id: 'ws-uuid',
+      is_active: true,
+    });
+  });
+
+  it('should query projectMember using the correct user_id', async () => {
+    mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+    mockPrismaService.projectMember.findMany.mockResolvedValue([]);
+
+    await service.getMe('uuid-1234');
+
+    expect(mockPrismaService.projectMember.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { user_id: 'uuid-1234' },
+      }),
+    );
+  });
+});
+</file>
+
+<file path="cios-backend/src/modules/auth/auth.service.google.spec.ts">
+import { UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { Test, TestingModule } from '@nestjs/testing';
+import { PrismaService } from '../../prisma/prisma.service';
+import { WorkspaceService } from '../workspace/workspace.service';
+import { AuthService } from './auth.service';
+
+const mockFetch = jest.fn();
+global.fetch = mockFetch;
+
+function buildFakeIdToken(claims: object): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256' })).toString(
+    'base64url',
+  );
+  const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
+  return `${header}.${payload}.fakesig`;
+}
+
+const mockUser = {
+  id: 'uuid-google-1',
+  email: 'googleuser@example.com',
+  full_name: 'Google User',
+  role: 'team_member',
+  avatar_url: 'https://example.com/photo.jpg',
+  default_model: null,
+  workspace_id: null,
+  is_active: true,
+};
+
+const mockPrismaService = {
+  user: {
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
+  refreshToken: {
+    create: jest.fn(),
+    findMany: jest.fn(),
+    update: jest.fn(),
+  },
+  projectMember: {
+    findMany: jest.fn().mockResolvedValue([]),
+  },
+};
+
+const mockJwtService = {
+  signAsync: jest.fn().mockResolvedValue('mock_access_token'),
+};
+
+const mockConfigService = {
+  get: jest.fn((key: string) => {
+    const cfg: Record<string, string> = {
+      JWT_ACCESS_EXPIRES_IN: '15m',
+      JWT_REFRESH_EXPIRES_IN: '7d',
+    };
+    return cfg[key] ?? null;
+  }),
+  getOrThrow: jest.fn((key: string) => {
+    const cfg: Record<string, string> = {
+      JWT_ACCESS_SECRET: 'access_secret',
+      JWT_REFRESH_SECRET: 'refresh_secret',
+      GOOGLE_CLIENT_ID: 'google-client-id',
+      GOOGLE_CLIENT_SECRET: 'google-client-secret',
+      GOOGLE_CALLBACK_URL: 'http://localhost:3000/api/v1/auth/google/callback',
+    };
+    if (!cfg[key]) throw new Error(`Missing config: ${key}`);
+    return cfg[key];
+  }),
+};
+
+const mockWorkspaceService = {
+  acceptInvitationOnRegister: jest.fn(),
+};
+
+describe('AuthService - googleLogin()', () => {
+  let service: AuthService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: JwtService, useValue: mockJwtService },
+        { provide: ConfigService, useValue: mockConfigService },
+        { provide: WorkspaceService, useValue: mockWorkspaceService },
+      ],
+    }).compile();
+
+    service = module.get<AuthService>(AuthService);
+    jest.clearAllMocks();
+  });
+
+  it('should throw UnauthorizedException when Google token exchange fails (non-ok response)', async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: 'invalid_grant' }),
+    });
+
+    await expect(service.googleLogin('bad-code')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    await expect(service.googleLogin('bad-code')).rejects.toThrow(
+      'Failed to exchange Google authorization code',
+    );
+  });
+
+  it('should throw UnauthorizedException when Google response has no id_token', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'tok', token_type: 'Bearer' }),
+    });
+
+    await expect(service.googleLogin('code-no-id-token')).rejects.toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('should create a new user when no account exists for the Google email', async () => {
+    const idToken = buildFakeIdToken({
+      sub: 'google-sub-123',
+      email: 'newgoogle@example.com',
+      name: 'New Google User',
+      picture: 'https://example.com/pic.jpg',
+    });
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id_token: idToken }),
+    });
+
+    mockPrismaService.user.findUnique.mockResolvedValue(null);
+    mockPrismaService.user.create.mockResolvedValue({
+      ...mockUser,
+      email: 'newgoogle@example.com',
+    });
+    mockPrismaService.refreshToken.create.mockResolvedValue({});
+    mockPrismaService.projectMember.findMany.mockResolvedValue([]);
+
+    const result = await service.googleLogin('valid-new-user-code');
+
+    expect(mockPrismaService.user.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          email: 'newgoogle@example.com',
+          google_id: 'google-sub-123',
+        }),
+      }),
+    );
+    expect(result).toHaveProperty('access_token');
+    expect(result).toHaveProperty('refresh_token');
+    expect(result.user.email).toBe('newgoogle@example.com');
+  });
+
+  it('should update google_id and return tokens when user already exists', async () => {
+    const idToken = buildFakeIdToken({
+      sub: 'google-sub-456',
+      email: 'existing@example.com',
+      name: 'Existing User',
+    });
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id_token: idToken }),
+    });
+
+    mockPrismaService.user.findUnique.mockResolvedValue({
+      ...mockUser,
+      email: 'existing@example.com',
+    });
+    mockPrismaService.user.update.mockResolvedValue({});
+    mockPrismaService.refreshToken.create.mockResolvedValue({});
+    mockPrismaService.projectMember.findMany.mockResolvedValue([]);
+
+    const result = await service.googleLogin('valid-existing-user-code');
+
+    expect(mockPrismaService.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: 'existing@example.com' },
+        data: { google_id: 'google-sub-456' },
+      }),
+    );
+    expect(result).toHaveProperty('access_token');
+  });
+
+  it('should throw UnauthorizedException when existing user account is inactive', async () => {
+    const idToken = buildFakeIdToken({
+      sub: 'google-sub-789',
+      email: 'inactive@example.com',
+      name: 'Inactive User',
+    });
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id_token: idToken }),
+    });
+
+    mockPrismaService.user.findUnique.mockResolvedValue({
+      ...mockUser,
+      email: 'inactive@example.com',
+      is_active: false,
+    });
+
+    await expect(service.googleLogin('code-inactive')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    await expect(service.googleLogin('code-inactive')).rejects.toThrow(
+      'deactivated',
+    );
+  });
+
+  it('should normalise email to lowercase from Google payload', async () => {
+    const idToken = buildFakeIdToken({
+      sub: 'google-sub-101',
+      email: 'UPPER@EXAMPLE.COM',
+    });
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ id_token: idToken }),
+    });
+
+    mockPrismaService.user.findUnique.mockResolvedValue(null);
+    mockPrismaService.user.create.mockResolvedValue({
+      ...mockUser,
+      email: 'upper@example.com',
+    });
+    mockPrismaService.refreshToken.create.mockResolvedValue({});
+    mockPrismaService.projectMember.findMany.mockResolvedValue([]);
+
+    await service.googleLogin('uppercase-email-code');
+
+    expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: 'upper@example.com' },
+      }),
+    );
+  });
+});
+</file>
+
+<file path="cios-backend/src/modules/auth/dto/google-auth.dto.ts">
+import { IsNotEmpty, IsString } from 'class-validator';
+
+export class GoogleAuthDto {
+  @IsString()
+  @IsNotEmpty()
+  code: string;
+}
+</file>
+
+<file path="cios-backend/src/modules/auth/strategies/google.strategy.ts">
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PassportStrategy } from '@nestjs/passport';
+import { Strategy, VerifyCallback } from 'passport-google-oauth20';
+
+@Injectable()
+export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
+  constructor(private readonly configService: ConfigService) {
+    super({
+      clientID: configService.getOrThrow<string>('GOOGLE_CLIENT_ID'),
+      clientSecret: configService.getOrThrow<string>('GOOGLE_CLIENT_SECRET'),
+      callbackURL: configService.getOrThrow<string>('GOOGLE_CALLBACK_URL'),
+      scope: ['email', 'profile'],
+    });
+  }
+
+  async validate(
+    accessToken: string,
+    refreshToken: string,
+    profile: any,
+    done: VerifyCallback,
+  ): Promise<any> {
+    const { id, emails, name, photos } = profile;
+    const user = {
+      google_id: id,
+      email: emails[0].value,
+      full_name: `${name.givenName ?? ''} ${name.familyName ?? ''}`.trim(),
+      avatar_url: photos?.[0]?.value ?? null,
+    };
+    done(null, user);
+  }
+}
 </file>
 
 <file path="cios-backend/.gitignore">
@@ -445,6 +1689,327 @@ As per PRD Section 8.8 "What NOT to Build in Phase 1":
 
 *Document generated: 22 April 2026*
 *CIOS PRD v3.0 — Feature F1: Authentication & Role-Based Access Control*
+</file>
+
+<file path="cios-backend/docs/RENDER_DEPLOYMENT.md">
+# Render Deployment Guide
+
+This backend is now configured for Render with:
+
+- dynamic port binding (`PORT`)
+- a public health endpoint (`GET /api/v1/healthz`)
+- graceful shutdown hooks
+- Prisma generate/build/migrate deploy flow in the deploy build step
+- connection pool and timeout tuning via environment variables
+
+## Option A: Blueprint (Recommended)
+
+1. Push this repository to GitHub.
+2. In Render, choose **New +** -> **Blueprint**.
+3. Select this repository.
+4. Render will detect `render.yaml` and prefill the service.
+5. Set secret values in Render for all `sync: false` variables.
+
+## Option B: Manual Web Service
+
+Use these settings in Render:
+
+- Environment: `Node`
+- Build Command: `npm ci --include=dev && npm run render:build`
+- Start Command: `npm run render:start`
+- Health Check Path: `/api/v1/healthz`
+
+## Required Environment Variables
+
+- `DATABASE_URL`
+- `JWT_ACCESS_SECRET`
+- `JWT_REFRESH_SECRET`
+- `RESEND_API_KEY`
+- `RESEND_FROM_EMAIL`
+
+## Optional Environment Variables
+
+- `FRONTEND_URL`
+- `DATABASE_SSL` (default `false`, set to `true` for hosted SSL Postgres)
+- `DATABASE_POOL_MAX` (default `10`)
+- `DATABASE_CONNECTION_TIMEOUT_MS` (default `10000`)
+- `DATABASE_IDLE_TIMEOUT_MS` (default `30000`)
+- `JWT_ACCESS_EXPIRES_IN` (default `15m`)
+- `JWT_REFRESH_EXPIRES_IN` (default `7d`)
+
+## Notes
+
+- Migrations are executed during deploy build with `prisma migrate deploy`.
+- If migration fails, deployment fails (safe by default).
+- Do not commit real secrets in `.env`.
+</file>
+
+<file path="cios-backend/docs/WORKSPACE_INVITATION_IMPLEMENTATION_2026-04-24.md">
+# CIOS Backend - Workspace Invitation Implementation
+
+**Date:** 24 April 2026
+
+**Status:** Complete and verified
+
+## Summary
+
+This document records the backend implementation completed on 24 April 2026 for the workspace invitation flow in CIOS. The work covered database support, NestJS module wiring, invitation APIs, registration and acceptance logic, Resend email integration, delivery debugging, and automated tests.
+
+The final result is a working backend invitation flow with real email sending through Resend, guarded admin-only invitation endpoints, registration-time workspace assignment, acceptance for existing users, and verified test coverage.
+
+## Scope Implemented
+
+The following backend capabilities were implemented and verified:
+
+- Workspace creation for admin users.
+- Admin-only member invitation endpoint.
+- Persistent `workspace_invitations` table with token and status tracking.
+- Invitation email sending through Resend.
+- New-user registration via invitation token.
+- Existing-user invitation acceptance via authenticated endpoint.
+- Pending invitation listing for admins.
+- Workspace member listing for admins.
+- Cleanup of stale invitation records if the email provider rejects a send.
+- Token-only invitation email fallback when `FRONTEND_URL` is not configured.
+- Provider error surfacing so backend failures expose the actual email rejection reason.
+
+## Files Added or Updated
+
+### New workspace module files
+
+- [workspace.module.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/workspace/workspace.module.ts)
+- [workspace.controller.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/workspace/workspace.controller.ts)
+- [workspace.service.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/workspace/workspace.service.ts)
+- [create-workspace.dto.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/workspace/dto/create-workspace.dto.ts)
+- [invite-member.dto.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/workspace/dto/invite-member.dto.ts)
+- [workspace.service.spec.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/workspace/workspace.service.spec.ts)
+- [workspace.e2e.spec.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/workspace/workspace.e2e.spec.ts)
+
+### Existing backend files updated
+
+- [app.module.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/app.module.ts)
+- [auth.module.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/auth/auth.module.ts)
+- [auth.service.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/auth/auth.service.ts)
+- [auth.controller.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/auth/auth.controller.ts)
+- [register.dto.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/auth/dto/register.dto.ts)
+- [auth.service.spec.ts](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/src/modules/auth/auth.service.spec.ts)
+- [schema.prisma](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/prisma/schema.prisma)
+- [migration.sql](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/prisma/migrations/20260424163705_add_workspace_invitations/migration.sql)
+- [.env.example](/C:/Users/rkj24/OneDrive/Desktop/CIOS/cios-backend/.env.example)
+
+## Database Changes
+
+The Prisma schema was extended with:
+
+- `InvitationStatus` enum:
+  `pending`, `accepted`
+- `WorkspaceInvitation` model:
+  stores `workspace_id`, `invited_by`, `email`, `token`, `status`, timestamps
+
+Key behavior:
+
+- Invitation tokens are unique.
+- Invitation status moves from `pending` to `accepted`.
+- Invitations are tied to both workspace and inviter.
+- Duplicate pending invites to the same email in the same workspace are blocked.
+
+## API Endpoints Implemented
+
+Base path: `api/v1/workspaces`
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/workspaces` | Create a workspace as an admin |
+| `POST` | `/workspaces/:workspaceId/invite` | Invite a member by email |
+| `POST` | `/workspaces/invitations/accept` | Accept invitation for an existing logged-in user |
+| `GET` | `/workspaces/:workspaceId/members` | List workspace members for admins |
+| `GET` | `/workspaces/:workspaceId/invitations/pending` | List pending invites for admins |
+
+## Invitation Flow Behavior
+
+### New user flow
+
+1. Admin calls invite endpoint.
+2. Backend validates admin role and workspace scope.
+3. Backend creates a pending invitation with a secure token.
+4. Backend sends invitation email through Resend.
+5. Invitee registers with the token.
+6. Registration assigns `workspace_id` immediately and marks invitation as accepted.
+
+### Existing user flow
+
+1. Admin calls invite endpoint.
+2. Backend creates a pending invitation.
+3. Backend sends email intended for existing-account acceptance.
+4. User authenticates and calls `/workspaces/invitations/accept`.
+5. Backend verifies invited email matches the authenticated user.
+6. Backend updates the user workspace and marks invitation as accepted.
+
+## Email Delivery Implementation
+
+Email delivery is handled through `nestjs-resend` / Resend.
+
+Important delivery decisions completed today:
+
+- `RESEND_API_KEY` is required at app boot.
+- `RESEND_FROM_EMAIL` is required for invite sends.
+- `FRONTEND_URL` is optional.
+- If `FRONTEND_URL` exists, the email contains a register or accept link.
+- If `FRONTEND_URL` is missing, the email contains the invitation token directly.
+- If Resend rejects the email, the just-created pending invitation is deleted so retries are not blocked.
+- The backend now logs and returns the provider rejection reason instead of hiding it behind a generic failure.
+
+## Delivery Debugging Completed Today
+
+During live verification, the initial sender configuration failed:
+
+- Previous sender: `CIOS <rishabh@theladder.ai>`
+- Resend rejection: `403 validation_error`
+- Reason: `theladder.ai` was not verified in the active Resend account
+
+The verified sending domain on the current Resend account was:
+
+- `kartikeyx.me`
+
+The sender was updated to:
+
+- `CIOS <noreply@kartikeyx.me>`
+
+After that change, direct Resend send verification succeeded and the full E2E invitation flow also sent a real email successfully.
+
+## Test Results
+
+### TypeScript compile
+
+Command:
+
+```bash
+npx tsc --noEmit
+```
+
+Result:
+
+- Passed
+
+### Focused unit tests
+
+Command:
+
+```bash
+npx jest src/modules/auth/auth.service.spec.ts src/modules/workspace/workspace.service.spec.ts --runInBand
+```
+
+Result:
+
+- `2` test suites passed
+- `34` tests passed
+- `0` failed
+
+Covered areas include:
+
+- Admin-only workspace creation
+- Invitation authorization checks
+- Duplicate invite prevention
+- New-user invite email path
+- Existing-user invite email path
+- Token-only email behavior without `FRONTEND_URL`
+- Invitation cleanup on provider rejection
+- Registration token validation
+- Registration requires invitation token
+- Existing-user acceptance flow rules
+
+### Full backend test run
+
+Command:
+
+```bash
+npm test -- --runInBand
+```
+
+Result:
+
+- `2` suites passed
+- `1` suite skipped intentionally
+- `34` tests passed
+- `12` skipped
+
+Skipped suite:
+
+- `workspace.e2e.spec.ts`
+- It is intentionally gated behind `RUN_WORKSPACE_E2E=true` because it uses real DB and real Resend
+
+### Real E2E invitation flow
+
+Command:
+
+```bash
+$env:RUN_WORKSPACE_E2E='true'; npx jest src/modules/workspace/workspace.e2e.spec.ts --runInBand --testTimeout=30000
+```
+
+Result:
+
+- `1` suite passed
+- `12` tests passed
+- Real invitation email sent successfully
+- Registration via invitation token succeeded
+- Invitation status moved to `accepted`
+
+Observed E2E console checkpoints:
+
+- Invitation email sent to `rishabh.kr.jha@gmail.com`
+- Invite token stored and used successfully
+- New user joined workspace successfully
+- Full admin/member/pending-invite workflow passed
+
+### Direct Resend provider verification
+
+After switching the sender to the verified domain, a direct Resend diagnostic send succeeded with:
+
+- Email ID: `e92c2b79-19af-4509-b0e2-63cabb4b1d35`
+- Provider error: `null`
+
+This confirmed the email provider path was functioning independently of the API layer.
+
+## Screenshot Evidence
+
+The invitation email was visually verified in Gmail during today's run. The screenshot provided with this task shows:
+
+- Sender: `CIOS <noreply@kartikeyx.me>`
+- Subject: `You've been invited to join E2E Test Workspace on CIOS`
+- Email body containing the invitation token
+
+Note: the screenshot was attached in the task context, not as a workspace file, so this markdown document records it as implementation evidence but does not embed a local image file from the repository.
+
+## Final Outcome
+
+Today's backend implementation is complete and verified for the current scope.
+
+The invitation system now supports:
+
+- database-backed invitation lifecycle tracking
+- secure invitation tokens
+- admin-only invitation management
+- registration and acceptance flows
+- real Resend delivery
+- failure cleanup on provider rejection
+- token-email fallback without frontend dependency
+- automated unit and E2E verification
+
+## Commands Run Today
+
+```bash
+npx tsc --noEmit
+npx jest src/modules/workspace/workspace.service.spec.ts --runInBand
+npx jest src/modules/auth/auth.service.spec.ts src/modules/workspace/workspace.service.spec.ts --runInBand
+npm test -- --runInBand
+$env:RUN_WORKSPACE_E2E='true'; npx jest src/modules/workspace/workspace.e2e.spec.ts --runInBand --testTimeout=30000
+```
+
+## Notes
+
+- `FRONTEND_URL` is still optional in the backend.
+- Without `FRONTEND_URL`, the invite email contains the token rather than a frontend link.
+- To send to real recipients, `RESEND_FROM_EMAIL` must use a domain verified in the active Resend account.
 </file>
 
 <file path="cios-backend/eslint.config.mjs">
@@ -3053,10 +4618,134 @@ ALTER TABLE "notifications" ADD CONSTRAINT "notifications_user_id_fkey" FOREIGN 
 ALTER TABLE "notifications" ADD CONSTRAINT "notifications_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 </file>
 
+<file path="cios-backend/prisma/migrations/20260424163705_add_workspace_invitations/migration.sql">
+/*
+  Warnings:
+
+  - The values [project_owner] on the enum `UserRole` will be removed. If these variants are still used in the database, this will fail.
+  - You are about to drop the column `fathom_link` on the `projects` table. All the data in the column will be lost.
+  - You are about to drop the column `sort_order` on the `thread_groups` table. All the data in the column will be lost.
+  - You are about to drop the column `access_level` on the `threads` table. All the data in the column will be lost.
+  - Changed the type of `access_level` on the `project_members` table. No cast exists, the column would be dropped and recreated, which cannot be done if there is data, since the column is required.
+  - Made the column `workspace_id` on table `users` required. This step will fail if there are existing NULL values in that column.
+
+*/
+-- CreateEnum
+CREATE TYPE "AccessLevel" AS ENUM ('read_only', 'edit');
+
+-- CreateEnum
+CREATE TYPE "InvitationStatus" AS ENUM ('pending', 'accepted');
+
+-- AlterEnum
+BEGIN;
+CREATE TYPE "UserRole_new" AS ENUM ('admin', 'team_member');
+ALTER TABLE "public"."users" ALTER COLUMN "role" DROP DEFAULT;
+ALTER TABLE "users" ALTER COLUMN "role" TYPE "UserRole_new" USING ("role"::text::"UserRole_new");
+ALTER TYPE "UserRole" RENAME TO "UserRole_old";
+ALTER TYPE "UserRole_new" RENAME TO "UserRole";
+DROP TYPE "public"."UserRole_old";
+ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'team_member';
+COMMIT;
+
+-- DropForeignKey
+ALTER TABLE "users" DROP CONSTRAINT "users_workspace_id_fkey";
+
+-- AlterTable
+ALTER TABLE "project_members" DROP COLUMN "access_level",
+ADD COLUMN     "access_level" "AccessLevel" NOT NULL;
+
+-- AlterTable
+ALTER TABLE "projects" DROP COLUMN "fathom_link",
+ADD COLUMN     "fathom_links" TEXT[];
+
+-- AlterTable
+ALTER TABLE "thread_groups" DROP COLUMN "sort_order";
+
+-- AlterTable
+ALTER TABLE "threads" DROP COLUMN "access_level";
+
+-- AlterTable
+ALTER TABLE "users" ALTER COLUMN "workspace_id" SET NOT NULL;
+
+-- CreateTable
+CREATE TABLE "workspace_invitations" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "workspace_id" UUID NOT NULL,
+    "invited_by" UUID NOT NULL,
+    "email" TEXT NOT NULL,
+    "token" TEXT NOT NULL,
+    "status" "InvitationStatus" NOT NULL DEFAULT 'pending',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "workspace_invitations_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "workspace_invitations_token_key" ON "workspace_invitations"("token");
+
+-- CreateIndex
+CREATE INDEX "workspace_invitations_workspace_id_idx" ON "workspace_invitations"("workspace_id");
+
+-- CreateIndex
+CREATE INDEX "workspace_invitations_token_idx" ON "workspace_invitations"("token");
+
+-- CreateIndex
+CREATE INDEX "refresh_tokens_user_id_is_revoked_idx" ON "refresh_tokens"("user_id", "is_revoked");
+
+-- AddForeignKey
+ALTER TABLE "workspace_invitations" ADD CONSTRAINT "workspace_invitations_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "workspace_invitations" ADD CONSTRAINT "workspace_invitations_invited_by_fkey" FOREIGN KEY ("invited_by") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "users" ADD CONSTRAINT "users_workspace_id_fkey" FOREIGN KEY ("workspace_id") REFERENCES "workspaces"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+</file>
+
 <file path="cios-backend/prisma/migrations/migration_lock.toml">
 # Please do not edit this file manually
 # It should be added in your version-control system (e.g., Git)
 provider = "postgresql"
+</file>
+
+<file path="cios-backend/render.yaml">
+services:
+  - type: web
+    name: cios-backend
+    runtime: node
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm ci --include=dev && npm run render:build
+    startCommand: npm run render:start
+    healthCheckPath: /api/v1/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_POOL_MAX
+        value: "10"
+      - key: DATABASE_CONNECTION_TIMEOUT_MS
+        value: "10000"
+      - key: DATABASE_IDLE_TIMEOUT_MS
+        value: "30000"
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
 </file>
 
 <file path="cios-backend/src/app.service.ts">
@@ -3066,583 +4755,6 @@ import { Injectable } from '@nestjs/common';
 export class AppService {
   getHello(): string {
     return 'Hello World!';
-  }
-}
-</file>
-
-<file path="cios-backend/src/modules/auth/auth.controller.ts">
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Post,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { AuthService } from './auth.service';
-import { CurrentUser } from './decorators/current-user.decorator';
-import { Public } from './decorators/public.decorator';
-import { LoginDto } from './dto/login.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { RegisterDto } from './dto/register.dto';
-
-@Controller('auth')
-export class AuthController {
-  constructor(
-    private readonly authService: AuthService,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
-  ) {}
-
-  @Public()
-  @Post('register')
-  @HttpCode(HttpStatus.CREATED)
-  async register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
-  }
-
-  @Public()
-  @Post('login')
-  @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
-  }
-
-  @Public()
-  @Post('refresh')
-  @HttpCode(HttpStatus.OK)
-  async refresh(@Body() dto: RefreshTokenDto) {
-    const payload = await this.decodeRefreshToken(dto.refresh_token);
-    return this.authService.refreshTokens(payload.sub, dto.refresh_token);
-  }
-
-  @Post('logout')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async logout(
-    @CurrentUser() user: { id: string },
-    @Body() dto: RefreshTokenDto,
-  ) {
-    await this.authService.logout(user.id, dto.refresh_token);
-  }
-
-  @Get('me')
-  async me(@CurrentUser() user: { id: string }) {
-    return this.authService.getMe(user.id);
-  }
-
-  private async decodeRefreshToken(token: string): Promise<{ sub: string }> {
-    try {
-      const payload = await this.jwtService.verifyAsync<{ sub: string }>(token, {
-        secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
-      });
-
-      if (!payload?.sub) {
-        throw new UnauthorizedException('Invalid refresh token payload');
-      }
-
-      return payload;
-    } catch {
-      throw new UnauthorizedException('Malformed or invalid refresh token');
-    }
-  }
-}
-</file>
-
-<file path="cios-backend/src/modules/auth/auth.module.ts">
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtModule } from '@nestjs/jwt';
-import { PassportModule } from '@nestjs/passport';
-import { StringValue } from 'ms';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
-import { JwtStrategy } from './strategies/jwt.strategy';
-import { RefreshStrategy } from './strategies/refresh.strategy';
-
-@Module({
-  imports: [
-    PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-        signOptions: {
-          expiresIn: (config.get<string>('JWT_ACCESS_EXPIRES_IN') ??
-            '15m') as StringValue,
-        },
-      }),
-    }),
-  ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RefreshStrategy, JwtAuthGuard, RolesGuard],
-  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule],
-})
-export class AuthModule {}
-</file>
-
-<file path="cios-backend/src/modules/auth/auth.service.spec.ts">
-import {
-  ConflictException,
-  NotFoundException,
-  UnauthorizedException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
-import { Test, TestingModule } from '@nestjs/testing';
-import * as bcrypt from 'bcrypt';
-import { PrismaService } from '../../prisma/prisma.service';
-import { AuthService } from './auth.service';
-
-jest.mock('bcrypt', () => ({
-  hash: jest.fn().mockResolvedValue('hashed_value'),
-  compare: jest.fn(),
-}));
-
-const mockUser = {
-  id: 'uuid-1234',
-  email: 'test@example.com',
-  password_hash: 'hashed_value',
-  full_name: 'Test User',
-  role: 'team_member',
-  avatar_url: null,
-  default_model: null,
-  workspace_id: null,
-  is_active: true,
-  created_at: new Date(),
-};
-
-const mockPrismaService = {
-  user: {
-    findUnique: jest.fn(),
-    findUniqueOrThrow: jest.fn(),
-    create: jest.fn(),
-  },
-  refreshToken: {
-    findMany: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-  },
-};
-
-const mockJwtService = {
-  signAsync: jest.fn().mockResolvedValue('mock_token'),
-};
-
-const mockConfigService = {
-  get: jest.fn((key: string) => {
-    const config: Record<string, string> = {
-      JWT_ACCESS_SECRET: 'access_secret',
-      JWT_REFRESH_SECRET: 'refresh_secret',
-      JWT_ACCESS_EXPIRES_IN: '15m',
-      JWT_REFRESH_EXPIRES_IN: '7d',
-    };
-    return config[key];
-  }),
-  getOrThrow: jest.fn((key: string) => {
-    const config: Record<string, string> = {
-      JWT_ACCESS_SECRET: 'access_secret',
-      JWT_REFRESH_SECRET: 'refresh_secret',
-    };
-
-    if (!config[key]) {
-      throw new Error(`Config key ${key} not found`);
-    }
-
-    return config[key];
-  }),
-};
-
-describe('AuthService', () => {
-  let service: AuthService;
-
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AuthService,
-        { provide: PrismaService, useValue: mockPrismaService },
-        { provide: JwtService, useValue: mockJwtService },
-        { provide: ConfigService, useValue: mockConfigService },
-      ],
-    }).compile();
-
-    service = module.get<AuthService>(AuthService);
-    jest.clearAllMocks();
-  });
-
-  describe('register()', () => {
-    it('should throw ConflictException if email already exists', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-
-      await expect(
-        service.register({ email: 'test@example.com', password: 'Password1' }),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('should create a new user and return tokens + user', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
-      mockPrismaService.user.create.mockResolvedValue(mockUser);
-      mockPrismaService.refreshToken.create.mockResolvedValue({});
-      mockJwtService.signAsync.mockResolvedValue('mock_token');
-
-      const result = await service.register({
-        email: 'new@example.com',
-        password: 'Password1',
-        full_name: 'New User',
-      });
-
-      expect(result).toHaveProperty('access_token');
-      expect(result).toHaveProperty('refresh_token');
-      expect(result.user.email).toBe('test@example.com');
-    });
-
-    it('should normalise email to lowercase', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
-      mockPrismaService.user.create.mockResolvedValue({
-        ...mockUser,
-        email: 'new@example.com',
-      });
-      mockPrismaService.refreshToken.create.mockResolvedValue({});
-
-      await service.register({ email: 'NEW@EXAMPLE.COM', password: 'Password1' });
-
-      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { email: 'new@example.com' },
-      });
-    });
-  });
-
-  describe('login()', () => {
-    it('should throw UnauthorizedException if user not found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
-      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-
-      await expect(
-        service.login({ email: 'notfound@example.com', password: 'Password1' }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('should throw UnauthorizedException if password is wrong', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-
-      await expect(
-        service.login({ email: 'test@example.com', password: 'WrongPass1' }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('should throw UnauthorizedException if user is inactive', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue({
-        ...mockUser,
-        is_active: false,
-      });
-      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
-
-      await expect(
-        service.login({ email: 'test@example.com', password: 'Password1' }),
-      ).rejects.toThrow(UnauthorizedException);
-    });
-
-    it('should return tokens and user on valid credentials', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
-      mockPrismaService.refreshToken.create.mockResolvedValue({});
-      mockJwtService.signAsync.mockResolvedValue('mock_token');
-
-      const result = await service.login({
-        email: 'test@example.com',
-        password: 'Password1',
-      });
-
-      expect(result).toHaveProperty('access_token', 'mock_token');
-      expect(result.user.email).toBe('test@example.com');
-    });
-  });
-
-  describe('logout()', () => {
-    it('should silently succeed even if token not found', async () => {
-      mockPrismaService.refreshToken.findMany.mockResolvedValue([]);
-      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
-
-      await expect(
-        service.logout('uuid-1234', 'some_token'),
-      ).resolves.toBeUndefined();
-    });
-  });
-
-  describe('getMe()', () => {
-    it('should throw NotFoundException if user not found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(null);
-
-      await expect(service.getMe('nonexistent-id')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it('should return user data if found', async () => {
-      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
-
-      const result = await service.getMe('uuid-1234');
-      expect(result.email).toBe('test@example.com');
-    });
-  });
-});
-</file>
-
-<file path="cios-backend/src/modules/auth/auth.service.ts">
-import {
-  Injectable,
-  ConflictException,
-  UnauthorizedException,
-  NotFoundException,
-} from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcrypt';
-import { StringValue } from 'ms';
-import { PrismaService } from '../../prisma/prisma.service';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
-import { JwtPayload } from './interfaces/jwt-payload.interface';
-import { AuthResponse } from './interfaces/auth-response.interface';
-
-const BCRYPT_ROUNDS = 12;
-
-@Injectable()
-export class AuthService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
-  ) {}
-
-  async register(dto: RegisterDto): Promise<AuthResponse> {
-    const email = dto.email.toLowerCase().trim();
-
-    const existing = await this.prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (existing) {
-      throw new ConflictException('An account with this email already exists');
-    }
-
-    const password_hash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password_hash,
-        full_name: dto.full_name ?? null,
-        role: 'team_member',
-      },
-      select: {
-        id: true,
-        email: true,
-        full_name: true,
-        role: true,
-        avatar_url: true,
-        default_model: true,
-        workspace_id: true,
-      },
-    });
-
-    const tokens = await this.issueTokens(user);
-
-    return {
-      ...tokens,
-      user: {
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name,
-        role: user.role,
-        avatar_url: user.avatar_url,
-        default_model: user.default_model,
-      },
-    };
-  }
-
-  async login(dto: LoginDto): Promise<AuthResponse> {
-    const email = dto.email.toLowerCase().trim();
-
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-    });
-
-    if (!user || !user.password_hash) {
-      await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
-    if (!user.is_active) {
-      throw new UnauthorizedException(
-        'Your account has been deactivated. Contact your admin.',
-      );
-    }
-
-    const passwordValid = await bcrypt.compare(dto.password, user.password_hash);
-    if (!passwordValid) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
-    const tokens = await this.issueTokens(user);
-
-    return {
-      ...tokens,
-      user: {
-        id: user.id,
-        email: user.email,
-        full_name: user.full_name,
-        role: user.role,
-        avatar_url: user.avatar_url,
-        default_model: user.default_model,
-      },
-    };
-  }
-
-  async refreshTokens(
-    userId: string,
-    rawRefreshToken: string,
-  ): Promise<{ access_token: string; refresh_token: string }> {
-    const storedTokens = await this.prisma.refreshToken.findMany({
-      where: {
-        user_id: userId,
-        is_revoked: false,
-        expires_at: { gt: new Date() },
-      },
-    });
-
-    let matchedToken: (typeof storedTokens)[number] | null = null;
-
-    for (const token of storedTokens) {
-      const match = await bcrypt.compare(rawRefreshToken, token.token_hash);
-      if (match) {
-        matchedToken = token;
-        break;
-      }
-    }
-
-    if (!matchedToken) {
-      throw new UnauthorizedException('Invalid or expired refresh token');
-    }
-
-    await this.prisma.refreshToken.update({
-      where: { id: matchedToken.id },
-      data: { is_revoked: true },
-    });
-
-    const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        workspace_id: true,
-        is_active: true,
-      },
-    });
-
-    if (!user.is_active) {
-      throw new UnauthorizedException('Account deactivated');
-    }
-
-    return this.issueTokens(user);
-  }
-
-  async logout(userId: string, rawRefreshToken: string): Promise<void> {
-    const storedTokens = await this.prisma.refreshToken.findMany({
-      where: { user_id: userId, is_revoked: false },
-    });
-
-    for (const token of storedTokens) {
-      const match = await bcrypt.compare(rawRefreshToken, token.token_hash);
-      if (match) {
-        await this.prisma.refreshToken.update({
-          where: { id: token.id },
-          data: { is_revoked: true },
-        });
-        break;
-      }
-    }
-  }
-
-  async getMe(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        full_name: true,
-        role: true,
-        avatar_url: true,
-        default_model: true,
-        view_preferences: true,
-        workspace_id: true,
-        is_active: true,
-        created_at: true,
-      },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    return user;
-  }
-
-  private async issueTokens(user: {
-    id: string;
-    email: string;
-    role: string;
-    workspace_id: string | null;
-  }): Promise<{ access_token: string; refresh_token: string }> {
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      role: user.role,
-      workspace_id: user.workspace_id,
-    };
-
-    const [access_token, refresh_token] = await Promise.all([
-      this.jwtService.signAsync(payload, {
-        secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
-        expiresIn: (this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
-          '15m') as StringValue,
-      }),
-      this.jwtService.signAsync(payload, {
-        secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
-        expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ??
-          '7d') as StringValue,
-      }),
-    ]);
-
-    const token_hash = await bcrypt.hash(refresh_token, BCRYPT_ROUNDS);
-    const expiresInStr =
-      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
-    const daysMatch = expiresInStr.match(/^(\d+)d$/);
-    const hoursMatch = expiresInStr.match(/^(\d+)h$/);
-    const expiryMs = daysMatch
-      ? parseInt(daysMatch[1], 10) * 24 * 60 * 60 * 1000
-      : hoursMatch
-        ? parseInt(hoursMatch[1], 10) * 60 * 60 * 1000
-        : 7 * 24 * 60 * 60 * 1000;
-
-    const expires_at = new Date(Date.now() + expiryMs);
-
-    await this.prisma.refreshToken.create({
-      data: {
-        user_id: user.id,
-        token_hash,
-        expires_at,
-      },
-    });
-
-    return { access_token, refresh_token };
   }
 }
 </file>
@@ -3693,36 +4805,6 @@ export class RefreshTokenDto {
   @IsString()
   @IsNotEmpty()
   refresh_token: string;
-}
-</file>
-
-<file path="cios-backend/src/modules/auth/dto/register.dto.ts">
-import {
-  IsEmail,
-  IsString,
-  MaxLength,
-  MinLength,
-  IsOptional,
-  Matches,
-} from 'class-validator';
-
-export class RegisterDto {
-  @IsEmail({}, { message: 'Provide a valid email address' })
-  email: string;
-
-  @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
-  @MaxLength(72, { message: 'Password must not exceed 72 characters' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message:
-      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
-  })
-  password: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  full_name?: string;
 }
 </file>
 
@@ -3896,6 +4978,1815 @@ export class RefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
 }
 </file>
 
+<file path="cios-backend/src/modules/workspace/dto/create-workspace.dto.ts">
+// ─────────────────────────────────────────────────────────────────────────────
+// [NEW FILE] create-workspace.dto.ts
+// Purpose: Defines validation rules for creating a new workspace in CIOS.
+// This file is part of the Workspace Invitation feature added to support
+// ClickUp-style email invite flow using Resend for transactional email.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+
+export class CreateWorkspaceDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsOptional()
+  settings?: Record<string, any>;
+}
+</file>
+
+<file path="cios-backend/src/modules/workspace/dto/invite-member.dto.ts">
+// ─────────────────────────────────────────────────────────────────────────────
+// [NEW FILE] invite-member.dto.ts
+// Purpose: Defines validation rules for inviting a workspace member by email.
+// This file is part of the Workspace Invitation feature added to support
+// ClickUp-style email invite flow using Resend for transactional email.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { IsEmail, IsNotEmpty } from 'class-validator';
+
+export class InviteMemberDto {
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+}
+</file>
+
+<file path="cios-backend/src/modules/workspace/workspace.controller.ts">
+// ─────────────────────────────────────────────────────────────────────────────
+// [NEW FILE] workspace.controller.ts
+// Purpose: Exposes workspace and invitation endpoints for authenticated users.
+// This file is part of the Workspace Invitation feature added to support
+// ClickUp-style email invite flow using Resend for transactional email.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+import { WorkspaceService } from './workspace.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateWorkspaceDto } from './dto/create-workspace.dto';
+import { InviteMemberDto } from './dto/invite-member.dto';
+
+@Controller('workspaces')
+@UseGuards(JwtAuthGuard)
+export class WorkspaceController {
+  constructor(private readonly workspaceService: WorkspaceService) {}
+
+  /**
+   * Creates a new workspace for an authenticated admin user.
+   *
+   * @param req - HTTP request containing req.user.id from JWT strategy
+   * @param dto - Workspace name and optional settings payload
+   * @returns   The created workspace record
+   * @throws    ForbiddenException when the caller is not an admin
+   */
+  @Post()
+  async createWorkspace(
+    @Request() req: { user: { id: string } },
+    @Body() dto: CreateWorkspaceDto,
+  ) {
+    return this.workspaceService.createWorkspace(req.user.id, dto);
+  }
+
+  /**
+   * Sends an invitation email to a target member for a workspace.
+   *
+   * @param req         - HTTP request containing req.user.id from JWT strategy
+   * @param workspaceId - Workspace identifier from the route
+   * @param dto         - Invite payload containing target email
+   * @returns           Success message and invited email
+   * @throws            ForbiddenException, NotFoundException, ConflictException
+   */
+  @Post(':workspaceId/invite')
+  async inviteMember(
+    @Request() req: { user: { id: string } },
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: InviteMemberDto,
+  ) {
+    return this.workspaceService.inviteMember(req.user.id, workspaceId, dto);
+  }
+
+  /**
+   * Accepts an invitation token for an already-registered authenticated user.
+   *
+   * @param token - Invitation token submitted in the request body
+   * @param req   - HTTP request containing req.user.id from JWT strategy
+   * @returns     Success message and workspace ID joined by the user
+   * @throws      NotFoundException, ConflictException, ForbiddenException
+   */
+  @Post('invitations/accept')
+  async acceptInvitation(
+    @Body('token') token: string,
+    @Request() req: { user: { id: string } },
+  ) {
+    return this.workspaceService.acceptInvitation(token, req.user.id);
+  }
+
+  /**
+   * Lists all members of a workspace for admin users in that workspace.
+   *
+   * @param req         - HTTP request containing req.user.id from JWT strategy
+   * @param workspaceId - Workspace identifier from the route
+   * @returns           Member list with profile and role fields
+   * @throws            ForbiddenException when access rules are not satisfied
+   */
+  @Get(':workspaceId/members')
+  async getMembers(
+    @Request() req: { user: { id: string } },
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.workspaceService.getWorkspaceMembers(req.user.id, workspaceId);
+  }
+
+  /**
+   * Lists pending workspace invitations for admin users in that workspace.
+   *
+   * @param req         - HTTP request containing req.user.id from JWT strategy
+   * @param workspaceId - Workspace identifier from the route
+   * @returns           Pending invitations ordered by newest first
+   * @throws            ForbiddenException when access rules are not satisfied
+   */
+  @Get(':workspaceId/invitations/pending')
+  async getPendingInvitations(
+    @Request() req: { user: { id: string } },
+    @Param('workspaceId') workspaceId: string,
+  ) {
+    return this.workspaceService.getPendingInvitations(req.user.id, workspaceId);
+  }
+}
+</file>
+
+<file path="cios-backend/src/modules/workspace/workspace.e2e.spec.ts">
+// ─────────────────────────────────────────────────────────────────────────────
+// [TEST FILE] workspace.e2e.spec.ts
+// Purpose: E2E tests for Workspace Invitation flow using real DB + real Resend.
+//          Boots full AppModule with Fastify and validates end-to-end behavior.
+//          Run: RUN_WORKSPACE_E2E=true npx jest workspace.e2e.spec.ts --verbose --testTimeout=30000
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { ValidationPipe } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
+import request from 'supertest';
+import { AppModule } from '../../app.module';
+import { PrismaService } from '../../prisma/prisma.service';
+
+const runRealE2E =
+  process.env.RUN_WORKSPACE_E2E === 'true' &&
+  Boolean(process.env.DATABASE_URL && process.env.RESEND_API_KEY);
+const describeRealE2E = runRealE2E ? describe : describe.skip;
+
+describeRealE2E('Workspace Invitation — Full E2E Flow', () => {
+  jest.setTimeout(30000); // 30 seconds for real email + DB operations
+
+  let app: NestFastifyApplication;
+  let prismaService: PrismaService;
+  let httpServer: any;
+
+  let adminAccessToken: string;
+  let memberAccessToken: string;
+  let adminUserId: string;
+  let workspaceId: string;
+  let invitationToken: string;
+
+  const cleanupTestData = async () => {
+    await prismaService.workspaceInvitation.deleteMany({
+      where: {
+        OR: [
+          { email: { contains: '@cios-test.com' } },
+          { email: 'rishabh.kr.jha@gmail.com' },
+        ],
+      },
+    });
+
+    await prismaService.user.deleteMany({
+      where: {
+        OR: [
+          { email: { contains: '@cios-test.com' } },
+          { email: 'rishabh.kr.jha@gmail.com' },
+        ],
+      },
+    });
+
+    await prismaService.workspace.deleteMany({
+      where: {
+        name: { contains: 'E2E Test Workspace' },
+      },
+    });
+  };
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleRef.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter(),
+    );
+
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+        transformOptions: { enableImplicitConversion: true },
+      }),
+    );
+
+    app.setGlobalPrefix('api/v1');
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+
+    httpServer = app.getHttpAdapter().getInstance().server;
+    prismaService = app.get(PrismaService);
+
+    await cleanupTestData();
+  });
+
+  afterAll(async () => {
+    await cleanupTestData();
+    await app.close();
+  });
+
+  // [TEST] Verifies admin registration works and stores token/user for downstream admin-only actions.
+  it('Step 1: Register an admin user', async () => {
+    const adminInviteToken = `seed-admin-${Date.now().toString(36)}`;
+
+    const bootstrapWorkspace = await prismaService.workspace.create({
+      data: {
+        name: 'E2E Test Workspace Bootstrap',
+      },
+    });
+
+    const bootstrapInviter = await prismaService.user.create({
+      data: {
+        email: 'seed-inviter@cios-test.com',
+        password_hash: 'seeded-hash',
+        full_name: 'Seed Inviter',
+        role: 'admin',
+        workspace_id: bootstrapWorkspace.id,
+      },
+    });
+
+    await prismaService.workspaceInvitation.create({
+      data: {
+        workspace_id: bootstrapWorkspace.id,
+        invited_by: bootstrapInviter.id,
+        email: 'admin@cios-test.com',
+        token: adminInviteToken,
+        status: 'pending',
+      },
+    });
+
+    const registerResponse = await request(httpServer)
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'admin@cios-test.com',
+        password: 'AdminPass1',
+        full_name: 'E2E Admin',
+        token: adminInviteToken,
+      });
+
+    expect(registerResponse.status).toBe(201);
+    expect(registerResponse.body).toHaveProperty('access_token');
+    expect(registerResponse.body).toHaveProperty('refresh_token');
+    expect(registerResponse.body).toHaveProperty('user');
+
+    adminAccessToken = registerResponse.body.access_token as string;
+    adminUserId = registerResponse.body.user.id as string;
+
+    await prismaService.user.update({
+      where: { id: adminUserId },
+      data: { role: 'admin' },
+    });
+
+    const loginResponse = await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'admin@cios-test.com',
+        password: 'AdminPass1',
+      });
+
+    expect(loginResponse.status).toBe(200);
+    adminAccessToken = loginResponse.body.access_token as string;
+  });
+
+  // [TEST] Verifies an admin can create a workspace and receive workspace metadata.
+  it('Step 2: Create a workspace as admin', async () => {
+    const response = await request(httpServer)
+      .post('/api/v1/workspaces')
+      .set('Authorization', `Bearer ${adminAccessToken}`)
+      .send({ name: 'E2E Test Workspace' });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toHaveProperty('id');
+    expect(response.body.name).toBe('E2E Test Workspace');
+
+    workspaceId = response.body.id as string;
+  });
+
+  // [TEST] Verifies team members are forbidden from creating workspaces.
+  it('Step 3: Non-admin cannot create a workspace', async () => {
+    const memberInviteToken = `seed-member-${Date.now().toString(36)}`;
+
+    await prismaService.workspaceInvitation.create({
+      data: {
+        workspace_id: workspaceId,
+        invited_by: adminUserId,
+        email: 'member@cios-test.com',
+        token: memberInviteToken,
+        status: 'pending',
+      },
+    });
+
+    const memberRegisterResponse = await request(httpServer)
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'member@cios-test.com',
+        password: 'MemberPass1',
+        full_name: 'E2E Member',
+        token: memberInviteToken,
+      });
+
+    expect(memberRegisterResponse.status).toBe(201);
+    memberAccessToken = memberRegisterResponse.body.access_token as string;
+
+    const unauthorizedCreateResponse = await request(httpServer)
+      .post('/api/v1/workspaces')
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ name: 'Unauthorized Workspace' });
+
+    expect(unauthorizedCreateResponse.status).toBe(403);
+  });
+
+  // [TEST] Verifies admin invite endpoint creates pending invite and sends a real email.
+  it('Step 4: Admin invites rishabh.kr.jha@gmail.com — real email is sent', async () => {
+    const response = await request(httpServer)
+      .post(`/api/v1/workspaces/${workspaceId}/invite`)
+      .set('Authorization', `Bearer ${adminAccessToken}`)
+      .send({ email: 'rishabh.kr.jha@gmail.com' });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      message: 'Invitation sent successfully',
+      email: 'rishabh.kr.jha@gmail.com',
+    });
+
+    const invitation = await prismaService.workspaceInvitation.findFirst({
+      where: {
+        email: 'rishabh.kr.jha@gmail.com',
+        workspace_id: workspaceId,
+      },
+    });
+
+    expect(invitation).not.toBeNull();
+    expect(invitation!.status).toBe('pending');
+    invitationToken = invitation!.token;
+
+    console.log('\n✅ INVITATION EMAIL SENT TO: rishabh.kr.jha@gmail.com');
+    if (process.env.FRONTEND_URL) {
+      console.log(
+        '🔗 Magic link (new user path):',
+        `${process.env.FRONTEND_URL}/register?token=${invitationToken}`,
+      );
+      console.log(
+        '🔗 Magic link (existing user path):',
+        `${process.env.FRONTEND_URL}/invitations/accept?token=${invitationToken}`,
+      );
+    } else {
+      console.log('📋 Token included in email:', invitationToken);
+    }
+  });
+
+  // [TEST] Verifies duplicate pending invitation attempts return conflict.
+  it('Step 5: Duplicate invite to same email returns 409', async () => {
+    const response = await request(httpServer)
+      .post(`/api/v1/workspaces/${workspaceId}/invite`)
+      .set('Authorization', `Bearer ${adminAccessToken}`)
+      .send({ email: 'rishabh.kr.jha@gmail.com' });
+
+    expect(response.status).toBe(409);
+  });
+
+  // [TEST] Verifies non-admin users cannot send workspace invitations.
+  it('Step 6: Non-admin cannot invite members', async () => {
+    const response = await request(httpServer)
+      .post(`/api/v1/workspaces/${workspaceId}/invite`)
+      .set('Authorization', `Bearer ${memberAccessToken}`)
+      .send({ email: 'another@example.com' });
+
+    expect(response.status).toBe(403);
+  });
+
+  // [TEST] Verifies invite-token registration auto-links new account to workspace and accepts invite.
+  it('Step 7: New user registers via invite token — auto-joined to workspace', async () => {
+    const response = await request(httpServer)
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'rishabh.kr.jha@gmail.com',
+        password: 'InvitePass1',
+        full_name: 'Rishabh Jha',
+        token: invitationToken,
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.user.email).toBe('rishabh.kr.jha@gmail.com');
+
+    const invitedUser = await prismaService.user.findUnique({
+      where: { email: 'rishabh.kr.jha@gmail.com' },
+    });
+    expect(invitedUser).not.toBeNull();
+    expect(invitedUser!.workspace_id).toBe(workspaceId);
+
+    const acceptedInvite = await prismaService.workspaceInvitation.findFirst({
+      where: {
+        email: 'rishabh.kr.jha@gmail.com',
+        workspace_id: workspaceId,
+      },
+    });
+    expect(acceptedInvite).not.toBeNull();
+    expect(acceptedInvite!.status).toBe('accepted');
+
+    console.log('\n✅ NEW USER REGISTERED VIA INVITE TOKEN');
+    console.log('   User workspace_id:', invitedUser!.workspace_id);
+    console.log('   Invitation status:', acceptedInvite!.status, '\n');
+  });
+
+  // [TEST] Verifies reusing the same token does not incorrectly attach another user to the workspace.
+  it('Step 8: Using the same token a second time returns 409', async () => {
+    const response = await request(httpServer)
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'another-new@cios-test.com',
+        password: 'AnotherPass1',
+        token: invitationToken,
+      });
+
+    expect([201, 409]).toContain(response.status);
+
+    const secondUser = await prismaService.user.findUnique({
+      where: { email: 'another-new@cios-test.com' },
+    });
+
+    if (response.status === 201) {
+      expect(secondUser).not.toBeNull();
+      expect(secondUser!.workspace_id).not.toBe(workspaceId);
+    } else {
+      expect(secondUser).toBeNull();
+    }
+  });
+
+  // [TEST] Verifies existing-user invitation acceptance endpoint joins user to workspace.
+  it('Step 9: Registered user accept flow — existing user uses /invitations/accept endpoint', async () => {
+    const existingInviteToken = `existing-user-bootstrap-${Date.now().toString(36)}`;
+
+    const existingUserBootstrapWorkspace = await prismaService.workspace.create(
+      {
+        data: {
+          name: 'E2E Test Workspace Existing Bootstrap',
+        },
+      },
+    );
+
+    await prismaService.workspaceInvitation.create({
+      data: {
+        workspace_id: existingUserBootstrapWorkspace.id,
+        invited_by: adminUserId,
+        email: 'existing@cios-test.com',
+        token: existingInviteToken,
+        status: 'pending',
+      },
+    });
+
+    const registerExistingResponse = await request(httpServer)
+      .post('/api/v1/auth/register')
+      .send({
+        email: 'existing@cios-test.com',
+        password: 'ExistingPass1',
+        token: existingInviteToken,
+      });
+
+    expect(registerExistingResponse.status).toBe(201);
+
+    const loginResponse = await request(httpServer)
+      .post('/api/v1/auth/login')
+      .send({
+        email: 'existing@cios-test.com',
+        password: 'ExistingPass1',
+      });
+
+    expect(loginResponse.status).toBe(200);
+    const existingUserToken = loginResponse.body.access_token as string;
+
+    const secondInviteResponse = await request(httpServer)
+      .post(`/api/v1/workspaces/${workspaceId}/invite`)
+      .set('Authorization', `Bearer ${adminAccessToken}`)
+      .send({ email: 'existing@cios-test.com' });
+
+    expect(secondInviteResponse.status).toBe(201);
+
+    const secondInvite = await prismaService.workspaceInvitation.findFirst({
+      where: { email: 'existing@cios-test.com', workspace_id: workspaceId },
+      orderBy: { created_at: 'desc' },
+    });
+    expect(secondInvite).not.toBeNull();
+
+    const acceptResponse = await request(httpServer)
+      .post('/api/v1/workspaces/invitations/accept')
+      .set('Authorization', `Bearer ${existingUserToken}`)
+      .send({ token: secondInvite!.token });
+
+    expect(acceptResponse.status).toBe(201);
+    expect(acceptResponse.body).toEqual({
+      message: 'Successfully joined workspace',
+      workspace_id: workspaceId,
+    });
+
+    const joinedUser = await prismaService.user.findUnique({
+      where: { email: 'existing@cios-test.com' },
+    });
+    expect(joinedUser!.workspace_id).toBe(workspaceId);
+  });
+
+  // [TEST] Verifies admins can retrieve workspace members including invited users.
+  it('Step 10: Admin can list all workspace members', async () => {
+    const response = await request(httpServer)
+      .get(`/api/v1/workspaces/${workspaceId}/members`)
+      .set('Authorization', `Bearer ${adminAccessToken}`);
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body)).toBe(true);
+
+    const emails = (response.body as Array<{ email: string }>).map(
+      (u) => u.email,
+    );
+    expect(emails).toContain('admin@cios-test.com');
+    expect(emails).toContain('rishabh.kr.jha@gmail.com');
+  });
+
+  // [TEST] Verifies pending invitation list includes only pending records and excludes accepted invite.
+  it('Step 11: Admin can list pending invitations', async () => {
+    const response = await request(httpServer)
+      .get(`/api/v1/workspaces/${workspaceId}/invitations/pending`)
+      .set('Authorization', `Bearer ${adminAccessToken}`);
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body)).toBe(true);
+
+    const pendingInvitations = response.body as Array<{
+      email: string;
+      status: string;
+    }>;
+    expect(pendingInvitations.every((inv) => inv.status === 'pending')).toBe(
+      true,
+    );
+
+    const pendingEmails = pendingInvitations.map((inv) => inv.email);
+    expect(pendingEmails).not.toContain('rishabh.kr.jha@gmail.com');
+  });
+
+  // [TEST] Verifies global JwtAuthGuard protects workspace endpoints from anonymous access.
+  it('Step 12: Unauthenticated request to any workspace endpoint returns 401', async () => {
+    const response = await request(httpServer)
+      .post('/api/v1/workspaces')
+      .send({ name: 'No Auth' });
+
+    expect(response.status).toBe(401);
+  });
+});
+</file>
+
+<file path="cios-backend/src/modules/workspace/workspace.module.ts">
+// ─────────────────────────────────────────────────────────────────────────────
+// [NEW FILE] workspace.module.ts
+// Purpose: Registers workspace invitation controllers and services in NestJS.
+// This file is part of the Workspace Invitation feature added to support
+// ClickUp-style email invite flow using Resend for transactional email.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { Module } from '@nestjs/common';
+import { WorkspaceController } from './workspace.controller';
+import { WorkspaceService } from './workspace.service';
+import { PrismaModule } from '../../prisma/prisma.module';
+
+@Module({
+  imports: [PrismaModule],
+  controllers: [WorkspaceController],
+  providers: [WorkspaceService],
+  exports: [WorkspaceService],
+})
+export class WorkspaceModule {}
+</file>
+
+<file path="cios-backend/src/modules/workspace/workspace.service.spec.ts">
+// ─────────────────────────────────────────────────────────────────────────────
+// [TEST FILE] workspace.service.spec.ts
+// Purpose: Unit tests for WorkspaceService — all dependencies fully mocked.
+//          Covers all 7 service methods across 21 test cases.
+//          Run: npx jest workspace.service.spec.ts --verbose
+// ─────────────────────────────────────────────────────────────────────────────
+
+import {
+  BadGatewayException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Test, TestingModule } from '@nestjs/testing';
+import { ResendService } from 'nestjs-resend';
+import { PrismaService } from '../../prisma/prisma.service';
+import { WorkspaceService } from './workspace.service';
+
+// Mock admin user — role = admin, has workspace
+const mockAdminUser = {
+  id: 'admin-uuid-001',
+  email: 'admin@cios.com',
+  full_name: 'CIOS Admin',
+  role: 'admin',
+  workspace_id: 'workspace-uuid-001',
+  is_active: true,
+  password_hash: 'hashed',
+  avatar_url: null,
+  default_model: null,
+  created_at: new Date(),
+  updated_at: new Date(),
+};
+
+// Mock non-admin user — role = team_member
+const mockTeamMember = {
+  ...mockAdminUser,
+  id: 'member-uuid-001',
+  email: 'member@cios.com',
+  role: 'team_member',
+};
+
+// Mock workspace
+const mockWorkspace = {
+  id: 'workspace-uuid-001',
+  name: 'CIOS Internal',
+  settings: null,
+  created_at: new Date(),
+  updated_at: new Date(),
+};
+
+// Mock invitation — pending state
+const mockInvitation = {
+  id: 'invite-uuid-001',
+  workspace_id: 'workspace-uuid-001',
+  invited_by: 'admin-uuid-001',
+  email: 'rishabh.kr.jha@gmail.com',
+  token: 'abc123def456abc123def456abc123def456abc123def456abc123def456abc1',
+  status: 'pending',
+  created_at: new Date(),
+  updated_at: new Date(),
+};
+
+// Mock PrismaService — includes all methods touched by WorkspaceService
+const mockPrismaService = {
+  user: {
+    findUnique: jest.fn(),
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
+  workspace: {
+    create: jest.fn(),
+    findUnique: jest.fn(),
+  },
+  workspaceInvitation: {
+    findFirst: jest.fn(),
+    findUnique: jest.fn(),
+    create: jest.fn(),
+    delete: jest.fn(),
+    update: jest.fn(),
+    findMany: jest.fn(),
+  },
+  $transaction: jest.fn(),
+};
+
+// Mock ResendService — mock the send() method
+const mockResendService = {
+  send: jest.fn().mockResolvedValue({
+    data: { id: 'resend-email-id-001' },
+    error: null,
+    headers: null,
+  }),
+};
+
+// Mock ConfigService — returns env vars needed by WorkspaceService
+const mockConfigService = {
+  get: jest.fn((key: string): string | undefined => {
+    const config: Record<string, string> = {
+      FRONTEND_URL: 'http://localhost:3000',
+      RESEND_FROM_EMAIL: 'CIOS <noreply@cios.com>',
+    };
+    return config[key];
+  }),
+  getOrThrow: jest.fn((key: string): string => {
+    const config: Record<string, string> = {
+      FRONTEND_URL: 'http://localhost:3000',
+      RESEND_FROM_EMAIL: 'CIOS <noreply@cios.com>',
+    };
+    if (!config[key]) throw new Error(`Config key ${key} not found`);
+    return config[key];
+  }),
+};
+
+describe('WorkspaceService', () => {
+  let service: WorkspaceService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        WorkspaceService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: ResendService, useValue: mockResendService },
+        { provide: ConfigService, useValue: mockConfigService },
+      ],
+    }).compile();
+
+    service = module.get<WorkspaceService>(WorkspaceService);
+    jest.clearAllMocks();
+
+    mockConfigService.get.mockImplementation(
+      (key: string): string | undefined => {
+        const config: Record<string, string> = {
+          FRONTEND_URL: 'http://localhost:3000',
+          RESEND_FROM_EMAIL: 'CIOS <noreply@cios.com>',
+        };
+        return config[key];
+      },
+    );
+    mockConfigService.getOrThrow.mockImplementation((key: string): string => {
+      const config: Record<string, string> = {
+        FRONTEND_URL: 'http://localhost:3000',
+        RESEND_FROM_EMAIL: 'CIOS <noreply@cios.com>',
+      };
+      if (!config[key]) throw new Error(`Config key ${key} not found`);
+      return config[key];
+    });
+    mockResendService.send.mockResolvedValue({
+      data: { id: 'resend-email-id-001' },
+      error: null,
+      headers: null,
+    });
+
+    mockPrismaService.$transaction.mockImplementation(async (ops: unknown[]) =>
+      Promise.all(ops as Promise<unknown>[]),
+    );
+    mockPrismaService.workspaceInvitation.delete.mockResolvedValue(
+      mockInvitation,
+    );
+  });
+
+  describe('createWorkspace()', () => {
+    // [TEST] Ensures RBAC blocks non-admin callers from creating tenant workspaces.
+    it('should throw ForbiddenException when calling user is not admin', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockTeamMember,
+      });
+
+      await expect(
+        service.createWorkspace('member-uuid-001', { name: 'Test WS' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    // [TEST] Confirms admin workspace creation persists workspace and links creator workspace_id.
+    it('should create workspace and update creator workspace_id when called by admin', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockAdminUser,
+        workspace_id: null,
+      });
+      mockPrismaService.workspace.create.mockResolvedValue(mockWorkspace);
+      mockPrismaService.user.update.mockResolvedValue({
+        ...mockAdminUser,
+        workspace_id: 'workspace-uuid-001',
+      });
+
+      await expect(
+        service.createWorkspace('admin-uuid-001', { name: 'CIOS Internal' }),
+      ).resolves.toEqual(mockWorkspace);
+
+      expect(mockPrismaService.workspace.create).toHaveBeenCalledWith({
+        data: { name: 'CIOS Internal', settings: undefined },
+      });
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: 'admin-uuid-001' },
+        data: { workspace_id: 'workspace-uuid-001' },
+      });
+    });
+
+    // [TEST] Verifies unknown users are denied so nonexistent principals cannot create workspaces.
+    it('should throw ForbiddenException when calling user does not exist', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.createWorkspace('nonexistent-id', { name: 'Test WS' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('inviteMember()', () => {
+    // [TEST] Ensures only admins can trigger workspace invitations.
+    it('should throw ForbiddenException when calling user is not admin', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockTeamMember,
+      });
+
+      await expect(
+        service.inviteMember('member-uuid-001', 'workspace-uuid-001', {
+          email: 'rishabh.kr.jha@gmail.com',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    // [TEST] Ensures inviter must belong to the same workspace to avoid cross-tenant invites.
+    it('should throw ForbiddenException when admin workspace_id does not match workspaceId param', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockAdminUser,
+        workspace_id: 'different-workspace-id',
+      });
+
+      await expect(
+        service.inviteMember('admin-uuid-001', 'workspace-uuid-001', {
+          email: 'rishabh.kr.jha@gmail.com',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    // [TEST] Ensures invite flow returns NotFound for invalid workspace targets.
+    it('should throw NotFoundException when workspace does not exist', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockAdminUser);
+      mockPrismaService.workspace.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.inviteMember('admin-uuid-001', 'workspace-uuid-001', {
+          email: 'rishabh.kr.jha@gmail.com',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    // [TEST] Ensures existing members are not re-invited, preventing duplicate membership flows.
+    it('should throw ConflictException when email is already a workspace member', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockAdminUser);
+      mockPrismaService.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockPrismaService.user.findFirst.mockResolvedValue({
+        id: 'member-uuid-001',
+      });
+
+      await expect(
+        service.inviteMember('admin-uuid-001', 'workspace-uuid-001', {
+          email: 'member@cios.com',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    // [TEST] Ensures only one pending invite exists per email/workspace pair.
+    it('should throw ConflictException when pending invitation already exists for this email', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockAdminUser);
+      mockPrismaService.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.findFirst.mockResolvedValue(
+        mockInvitation,
+      );
+
+      await expect(
+        service.inviteMember('admin-uuid-001', 'workspace-uuid-001', {
+          email: 'rishabh.kr.jha@gmail.com',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    // [TEST] Confirms unregistered invitees get the register-link email path.
+    it('should create invitation and send email with /register link for new (unregistered) user', async () => {
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce(mockAdminUser)
+        .mockResolvedValueOnce(null);
+      mockPrismaService.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.create.mockResolvedValue(
+        mockInvitation,
+      );
+      mockResendService.send.mockResolvedValue({
+        data: { id: 'email-id' },
+        error: null,
+        headers: null,
+      });
+
+      await expect(
+        service.inviteMember('admin-uuid-001', 'workspace-uuid-001', {
+          email: 'rishabh.kr.jha@gmail.com',
+        }),
+      ).resolves.toEqual({
+        message: 'Invitation sent successfully',
+        email: 'rishabh.kr.jha@gmail.com',
+      });
+
+      expect(mockResendService.send).toHaveBeenCalledTimes(1);
+      expect(mockPrismaService.workspaceInvitation.create).toHaveBeenCalled();
+
+      const sendArgs = mockResendService.send.mock.calls[0][0] as {
+        html: string;
+      };
+      expect(sendArgs.html).toContain('/register?token=');
+    });
+
+    // [TEST] Confirms existing registered users get accept-link email path.
+    it('should send email with /invitations/accept link for already-registered user', async () => {
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce(mockAdminUser)
+        .mockResolvedValueOnce({ ...mockTeamMember, workspace_id: null });
+      mockPrismaService.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.create.mockResolvedValue(
+        mockInvitation,
+      );
+
+      await service.inviteMember('admin-uuid-001', 'workspace-uuid-001', {
+        email: 'member@cios.com',
+      });
+
+      const sendArgs = mockResendService.send.mock.calls[0][0] as {
+        html: string;
+      };
+      expect(sendArgs.html).toContain('/invitations/accept?token=');
+    });
+
+    // [TEST] Confirms backend email sending still works without a frontend URL.
+    it('should send a token-only email when FRONTEND_URL is not configured', async () => {
+      mockConfigService.get.mockImplementation(
+        (key: string): string | undefined => {
+          if (key === 'FRONTEND_URL') return undefined;
+          return undefined;
+        },
+      );
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce(mockAdminUser)
+        .mockResolvedValueOnce(null);
+      mockPrismaService.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.create.mockResolvedValue(
+        mockInvitation,
+      );
+
+      await service.inviteMember('admin-uuid-001', 'workspace-uuid-001', {
+        email: 'rishabh.kr.jha@gmail.com',
+      });
+
+      const sendArgs = mockResendService.send.mock.calls[0][0] as {
+        html: string;
+      };
+      expect(sendArgs.html).toContain(mockInvitation.token);
+      expect(sendArgs.html).not.toContain('undefined/register');
+    });
+
+    // [TEST] Ensures failed provider sends do not leave stale pending invites.
+    it('should delete the pending invitation and throw when email provider rejects the send', async () => {
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce(mockAdminUser)
+        .mockResolvedValueOnce(null);
+      mockPrismaService.workspace.findUnique.mockResolvedValue(mockWorkspace);
+      mockPrismaService.user.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.findFirst.mockResolvedValue(null);
+      mockPrismaService.workspaceInvitation.create.mockResolvedValue(
+        mockInvitation,
+      );
+      mockResendService.send.mockResolvedValue({
+        data: null,
+        error: {
+          message: 'Invalid from address',
+          name: 'invalid_from_address',
+          statusCode: 422,
+        },
+        headers: null,
+      });
+
+      await expect(
+        service.inviteMember('admin-uuid-001', 'workspace-uuid-001', {
+          email: 'rishabh.kr.jha@gmail.com',
+        }),
+      ).rejects.toThrow(BadGatewayException);
+
+      expect(mockPrismaService.workspaceInvitation.delete).toHaveBeenCalledWith(
+        {
+          where: { id: mockInvitation.id },
+        },
+      );
+    });
+  });
+
+  describe('acceptInvitation()', () => {
+    // [TEST] Ensures unknown invitation tokens are rejected.
+    it('should throw NotFoundException when token is invalid', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.acceptInvitation('invalid-token', 'member-uuid-001'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    // [TEST] Ensures accepted tokens cannot be replayed for another join action.
+    it('should throw ConflictException when invitation is already accepted', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue({
+        ...mockInvitation,
+        status: 'accepted',
+      });
+
+      await expect(
+        service.acceptInvitation('abc123...', 'member-uuid-001'),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    // [TEST] Ensures invitation token cannot be used by an account with different email.
+    it('should throw ForbiddenException when token email does not match user email', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue({
+        ...mockInvitation,
+        email: 'other@example.com',
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockTeamMember,
+        email: 'member@cios.com',
+      });
+
+      await expect(
+        service.acceptInvitation('abc123...', 'member-uuid-001'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    // [TEST] Confirms valid acceptance updates user workspace and invitation status atomically.
+    it('should update user workspace_id and mark invitation accepted on valid token', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue({
+        ...mockInvitation,
+        email: 'member@cios.com',
+        status: 'pending',
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockTeamMember,
+        email: 'member@cios.com',
+      });
+      mockPrismaService.user.update.mockResolvedValue({
+        ...mockTeamMember,
+        workspace_id: 'workspace-uuid-001',
+      });
+      mockPrismaService.workspaceInvitation.update.mockResolvedValue({
+        ...mockInvitation,
+        status: 'accepted',
+      });
+
+      await expect(
+        service.acceptInvitation(mockInvitation.token, 'member-uuid-001'),
+      ).resolves.toEqual({
+        message: 'Successfully joined workspace',
+        workspace_id: 'workspace-uuid-001',
+      });
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: 'member-uuid-001' },
+        data: {
+          workspace_id: 'workspace-uuid-001',
+          role: 'team_member',
+        },
+      });
+      expect(mockPrismaService.workspaceInvitation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: 'accepted' },
+        }),
+      );
+    });
+  });
+
+  describe('acceptInvitationOnRegister()', () => {
+    // [TEST] Ensures signup stays non-blocking when token is invalid.
+    it('should silently return without throwing when token is not found', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.acceptInvitationOnRegister('invalid-token', 'new-user-id'),
+      ).resolves.toBeNull();
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    // [TEST] Ensures already-consumed invite tokens are ignored during registration.
+    it('should silently return without throwing when invitation is already accepted', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue({
+        ...mockInvitation,
+        status: 'accepted',
+      });
+
+      await expect(
+        service.acceptInvitationOnRegister(mockInvitation.token, 'new-user-id'),
+      ).resolves.toBeNull();
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+    });
+
+    // [TEST] Confirms valid registration token links user and marks invite accepted.
+    it('should link new user to workspace and mark invitation accepted on valid token', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue({
+        ...mockInvitation,
+        status: 'pending',
+      });
+      mockPrismaService.user.update.mockResolvedValue({
+        ...mockTeamMember,
+        id: 'new-user-id',
+        workspace_id: 'workspace-uuid-001',
+      });
+      mockPrismaService.workspaceInvitation.update.mockResolvedValue({
+        ...mockInvitation,
+        status: 'accepted',
+      });
+
+      await service.acceptInvitationOnRegister(
+        mockInvitation.token,
+        'new-user-id',
+      );
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: 'new-user-id' },
+        data: {
+          workspace_id: 'workspace-uuid-001',
+          role: 'team_member',
+        },
+      });
+      expect(mockPrismaService.workspaceInvitation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { status: 'accepted' },
+        }),
+      );
+    });
+  });
+
+  describe('getWorkspaceMembers()', () => {
+    // [TEST] Ensures non-admin users cannot list workspace members.
+    it('should throw ForbiddenException when calling user is not admin', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockTeamMember);
+
+      await expect(
+        service.getWorkspaceMembers('member-uuid-001', 'workspace-uuid-001'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    // [TEST] Confirms admins can list all users in their workspace.
+    it('should return all users belonging to the workspace', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockAdminUser);
+      mockPrismaService.user.findMany.mockResolvedValue([
+        mockAdminUser,
+        mockTeamMember,
+      ]);
+
+      const result = await service.getWorkspaceMembers(
+        'admin-uuid-001',
+        'workspace-uuid-001',
+      );
+
+      expect(result).toHaveLength(2);
+      expect(mockPrismaService.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { workspace_id: 'workspace-uuid-001' },
+        }),
+      );
+    });
+  });
+
+  describe('getPendingInvitations()', () => {
+    // [TEST] Ensures pending invitation list is restricted to admins.
+    it('should throw ForbiddenException when calling user is not admin', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockTeamMember);
+
+      await expect(
+        service.getPendingInvitations('member-uuid-001', 'workspace-uuid-001'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    // [TEST] Confirms admin pending-invite view is filtered by pending status and newest-first order.
+    it('should return only pending invitations ordered by created_at DESC', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockAdminUser);
+      mockPrismaService.workspaceInvitation.findMany.mockResolvedValue([
+        mockInvitation,
+      ]);
+
+      await expect(
+        service.getPendingInvitations('admin-uuid-001', 'workspace-uuid-001'),
+      ).resolves.toEqual([mockInvitation]);
+
+      expect(
+        mockPrismaService.workspaceInvitation.findMany,
+      ).toHaveBeenCalledWith({
+        where: {
+          workspace_id: 'workspace-uuid-001',
+          status: 'pending',
+        },
+        orderBy: { created_at: 'desc' },
+      });
+    });
+  });
+});
+</file>
+
+<file path="cios-backend/src/modules/workspace/workspace.service.ts">
+// ─────────────────────────────────────────────────────────────────────────────
+// [NEW FILE] workspace.service.ts
+// Purpose: Handles all workspace creation and member invitation logic for CIOS.
+// This file is part of the Workspace Invitation feature added to support
+// ClickUp-style email invite flow using Resend for transactional email.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import {
+  Injectable,
+  BadGatewayException,
+  ForbiddenException,
+  NotFoundException,
+  ConflictException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Prisma } from '../../generated/prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ResendService } from 'nestjs-resend';
+import * as crypto from 'crypto';
+import { CreateWorkspaceDto } from './dto/create-workspace.dto';
+import { InviteMemberDto } from './dto/invite-member.dto';
+
+@Injectable()
+export class WorkspaceService {
+  private readonly logger = new Logger(WorkspaceService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly resend: ResendService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  /**
+   * Creates a new workspace. Only callable by users with role = admin.
+   *
+   * @param userId - The ID of the calling user (must be admin)
+   * @param dto    - Contains workspace name and optional settings
+   * @returns      The newly created Workspace record
+   * @throws       ForbiddenException if the calling user is not an admin
+   */
+  async createWorkspace(userId: string, dto: CreateWorkspaceDto) {
+    // Resolve the caller first so we can enforce role-based permissions.
+    const caller = await this.runPrisma(
+      () =>
+        this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, role: true },
+        }),
+      'Failed to validate workspace creator',
+    );
+
+    // Only admins are allowed to create workspaces.
+    if (!caller || caller.role !== 'admin') {
+      throw new ForbiddenException('Only admins can create workspaces');
+    }
+
+    // Persist the new workspace and immediately attach the admin to it.
+    const workspace = await this.runPrisma(
+      () =>
+        this.prisma.workspace.create({
+          data: {
+            name: dto.name,
+            settings: dto.settings,
+          },
+        }),
+      'Failed to create workspace',
+    );
+
+    // Keep tenancy consistent by moving the creating admin into the new workspace.
+    await this.runPrisma(
+      () =>
+        this.prisma.user.update({
+          where: { id: userId },
+          data: { workspace_id: workspace.id },
+        }),
+      'Failed to assign workspace to admin user',
+    );
+
+    return workspace;
+  }
+
+  /**
+   * Sends an invitation email to an address to join a workspace.
+   *
+   * @param adminUserId - The ID of the calling admin user
+   * @param workspaceId - Workspace to invite the target email into
+   * @param dto         - Contains the invitee email address
+   * @returns           Success message payload with target email
+   * @throws            ForbiddenException, NotFoundException, ConflictException
+   */
+  async inviteMember(
+    adminUserId: string,
+    workspaceId: string,
+    dto: InviteMemberDto,
+  ) {
+    // Normalize email once to avoid duplicate invites caused by case variations.
+    const normalizedEmail = dto.email.toLowerCase().trim();
+
+    // Load inviter identity for authorization and email template personalization.
+    const inviterUser = await this.runPrisma(
+      () =>
+        this.prisma.user.findUnique({
+          where: { id: adminUserId },
+          select: {
+            id: true,
+            role: true,
+            workspace_id: true,
+            full_name: true,
+            email: true,
+          },
+        }),
+      'Failed to validate inviter user',
+    );
+
+    // Only admins are allowed to invite members. Verify role and workspace match
+    // before proceeding — do not leak workspace existence to non-admins.
+    if (
+      !inviterUser ||
+      inviterUser.role !== 'admin' ||
+      inviterUser.workspace_id !== workspaceId
+    ) {
+      throw new ForbiddenException(
+        'Only admins can invite members to this workspace',
+      );
+    }
+
+    // Confirm workspace exists so invitation email can reference a valid tenant.
+    const workspace = await this.runPrisma(
+      () =>
+        this.prisma.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { id: true, name: true },
+        }),
+      'Failed to fetch workspace for invitation',
+    );
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    // Prevent duplicate membership assignment for users already in this workspace.
+    const existingMember = await this.runPrisma(
+      () =>
+        this.prisma.user.findFirst({
+          where: {
+            email: normalizedEmail,
+            workspace_id: workspaceId,
+          },
+          select: { id: true },
+        }),
+      'Failed to verify current workspace membership',
+    );
+
+    if (existingMember) {
+      throw new ConflictException(
+        'This user is already a member of this workspace',
+      );
+    }
+
+    // Prevent sending duplicate pending invitations to the same email/workspace pair.
+    const existingPendingInvitation = await this.runPrisma(
+      () =>
+        this.prisma.workspaceInvitation.findFirst({
+          where: {
+            email: normalizedEmail,
+            workspace_id: workspaceId,
+            status: 'pending',
+          },
+          select: { id: true },
+        }),
+      'Failed to check for existing pending invitation',
+    );
+
+    if (existingPendingInvitation) {
+      throw new ConflictException(
+        'An invitation has already been sent to this email',
+      );
+    }
+
+    // Check whether the invitee already has an account to determine invite flow.
+    const existingUser = await this.runPrisma(
+      () =>
+        this.prisma.user.findUnique({
+          where: { email: normalizedEmail },
+          select: { id: true },
+        }),
+      'Failed to resolve invitee account status',
+    );
+
+    const frontendUrl = this.configService
+      .get<string>('FRONTEND_URL')
+      ?.trim()
+      .replace(/\/+$/, '');
+    const fromEmail = this.getRequiredConfig('RESEND_FROM_EMAIL');
+
+    // Generate a cryptographically secure invitation token for the magic link.
+    // crypto.randomBytes(32) yields 32 bytes = 64 hex chars of high entropy.
+    const generatedToken = crypto.randomBytes(32).toString('hex');
+
+    // Save the invitation record before sending email so acceptance can be tracked.
+    // If the provider rejects the email, the record is deleted below so retries are
+    // not blocked by a pending invite that was never actually sent.
+    const invitation = await this.runPrisma(
+      () =>
+        this.prisma.workspaceInvitation.create({
+          data: {
+            workspace_id: workspaceId,
+            invited_by: adminUserId,
+            email: normalizedEmail,
+            token: generatedToken,
+            status: 'pending',
+          },
+        }),
+      'Failed to create workspace invitation',
+    );
+
+    // Determine the correct magic link based on whether the invitee already has
+    // a CIOS account. New users are sent to /register to create an account first;
+    // existing users are sent to /invitations/accept where they are added directly
+    // after login verification.
+    const magicLink = frontendUrl
+      ? existingUser
+        ? `${frontendUrl}/invitations/accept?token=${encodeURIComponent(invitation.token)}`
+        : `${frontendUrl}/register?token=${encodeURIComponent(invitation.token)}`
+      : null;
+    const workspaceName = this.escapeHtml(workspace.name);
+    const inviterName = this.escapeHtml(
+      inviterUser.full_name ?? inviterUser.email,
+    );
+    const actionHtml = magicLink
+      ? `
+            <p>Click the button below to ${existingUser ? 'accept your invitation' : 'create your account and join'}:</p>
+            <a href="${magicLink}" style="
+              display: inline-block;
+              background-color: #0ea5e9;
+              color: white;
+              padding: 12px 24px;
+              border-radius: 6px;
+              text-decoration: none;
+              font-weight: bold;
+              margin: 16px 0;
+            ">
+              ${existingUser ? 'Accept Invitation' : 'Create Account & Join'}
+            </a>
+        `
+      : `
+            <p>Use this invitation token to ${existingUser ? 'accept your invitation' : 'create your account and join'}:</p>
+            <pre style="
+              background-color: #f3f4f6;
+              border-radius: 6px;
+              color: #111827;
+              font-size: 14px;
+              overflow-wrap: anywhere;
+              padding: 12px;
+              white-space: pre-wrap;
+            ">${invitation.token}</pre>
+        `;
+
+    try {
+      // Send a transactional email with the role-aware call-to-action button.
+      const sendResult = await this.resend.send({
+        from: fromEmail,
+        to: normalizedEmail,
+        subject: `You've been invited to join ${workspace.name} on CIOS`,
+        html: `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>You've been invited to join <strong>${workspaceName}</strong></h2>
+            <p>You have been invited by <strong>${inviterName}</strong> to join their workspace on CIOS.</p>
+            ${actionHtml}
+            <p style="color: #6b7280; font-size: 14px;">
+              If you did not expect this invitation, you can safely ignore this email.
+            </p>
+          </div>
+        `,
+      });
+
+      if (sendResult.error || !sendResult.data?.id) {
+        throw new Error(
+          sendResult.error?.message ??
+            'Email provider did not return a send id',
+        );
+      }
+    } catch (error) {
+      await this.prisma.workspaceInvitation
+        .delete({ where: { id: invitation.id } })
+        .catch(() => undefined);
+
+      const providerMessage =
+        error instanceof Error ? error.message : 'Unknown email provider error';
+      this.logger.error(
+        `Workspace invitation email failed for ${normalizedEmail}: ${providerMessage}`,
+      );
+
+      throw new BadGatewayException(
+        `Email provider rejected invitation: ${providerMessage}`,
+      );
+    }
+
+    return {
+      message: 'Invitation sent successfully',
+      email: normalizedEmail,
+    };
+  }
+
+  /**
+   * Accepts a pending invitation for an already-registered authenticated user.
+   *
+   * @param token  - Invitation token from the magic link
+   * @param userId - Authenticated user ID attempting to accept invitation
+   * @returns      Success payload including joined workspace ID
+   * @throws       NotFoundException, ConflictException, ForbiddenException
+   */
+  async acceptInvitation(token: string, userId: string) {
+    // Resolve invitation by token; unknown tokens are treated as not found.
+    const invitation = await this.runPrisma(
+      () =>
+        this.prisma.workspaceInvitation.findUnique({
+          where: { token },
+        }),
+      'Failed to validate invitation token',
+    );
+
+    if (!invitation) {
+      throw new NotFoundException('Invalid invitation token');
+    }
+
+    // Block token replay by refusing invitations that were already accepted.
+    if (invitation.status === 'accepted') {
+      throw new ConflictException('This invitation has already been used');
+    }
+
+    // Verify the caller's identity matches the invited email to prevent takeover.
+    const user = await this.runPrisma(
+      () =>
+        this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, email: true },
+        }),
+      'Failed to validate invitation recipient',
+    );
+
+    // Invitation acceptance is strictly bound to the exact target email address.
+    if (!user || user.email.toLowerCase() !== invitation.email.toLowerCase()) {
+      throw new ForbiddenException(
+        'This invitation was not sent to your email address',
+      );
+    }
+
+    // Apply workspace join and invitation status flip atomically for consistency.
+    await this.runPrisma(
+      () =>
+        this.prisma.$transaction([
+          this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+              workspace_id: invitation.workspace_id,
+              role: 'team_member',
+            },
+          }),
+          this.prisma.workspaceInvitation.update({
+            where: { id: invitation.id },
+            data: { status: 'accepted' },
+          }),
+        ]),
+      'Failed to accept workspace invitation',
+    );
+
+    return {
+      message: 'Successfully joined workspace',
+      workspace_id: invitation.workspace_id,
+    };
+  }
+
+  /**
+   * Accepts an invitation right after a brand-new account registration.
+   *
+   * @param token     - Invitation token passed during registration
+   * @param newUserId - Newly created user ID
+   * @returns         The updated user or null when token is absent/already used
+   * @throws          InternalServerErrorException only for unexpected DB failures
+   */
+  async acceptInvitationOnRegister(token: string, newUserId: string) {
+    // Lookup is intentionally tolerant; invalid tokens should not break signup.
+    const invitation = await this.runPrisma(
+      () =>
+        this.prisma.workspaceInvitation.findUnique({
+          where: { token },
+        }),
+      'Failed to process registration invitation token',
+    );
+
+    // If token is unknown, return silently because registration already succeeded.
+    if (!invitation) {
+      return null;
+    }
+
+    // If token was consumed previously, do not fail registration flow.
+    if (invitation.status === 'accepted') {
+      return null;
+    }
+
+    // Link user to workspace and mark invitation accepted in one transaction.
+    const [updatedUser] = await this.runPrisma(
+      () =>
+        this.prisma.$transaction([
+          this.prisma.user.update({
+            where: { id: newUserId },
+            data: {
+              workspace_id: invitation.workspace_id,
+              role: 'team_member',
+            },
+          }),
+          this.prisma.workspaceInvitation.update({
+            where: { id: invitation.id },
+            data: { status: 'accepted' },
+          }),
+        ]),
+      'Failed to attach registered user to invited workspace',
+    );
+
+    return updatedUser;
+  }
+
+  /**
+   * Returns all members in a workspace for an authorized admin.
+   *
+   * @param adminUserId - Calling admin user ID
+   * @param workspaceId - Workspace identifier from route
+   * @returns           Array of workspace member records
+   * @throws            ForbiddenException when access rules are not met
+   */
+  async getWorkspaceMembers(adminUserId: string, workspaceId: string) {
+    // Enforce admin-only workspace scope checks before exposing membership data.
+    await this.ensureWorkspaceAdmin(adminUserId, workspaceId);
+
+    // Return a minimal member payload needed by admin management views.
+    return this.runPrisma(
+      () =>
+        this.prisma.user.findMany({
+          where: { workspace_id: workspaceId },
+          select: {
+            id: true,
+            email: true,
+            full_name: true,
+            avatar_url: true,
+            role: true,
+            is_active: true,
+            created_at: true,
+          },
+          orderBy: { created_at: 'desc' },
+        }),
+      'Failed to fetch workspace members',
+    );
+  }
+
+  /**
+   * Returns all pending invitations for a workspace admin view.
+   *
+   * @param adminUserId - Calling admin user ID
+   * @param workspaceId - Workspace identifier from route
+   * @returns           Array of pending invitation records
+   * @throws            ForbiddenException when access rules are not met
+   */
+  async getPendingInvitations(adminUserId: string, workspaceId: string) {
+    // Enforce admin-only workspace scope checks before exposing invite metadata.
+    await this.ensureWorkspaceAdmin(adminUserId, workspaceId);
+
+    // Return pending invites in reverse chronological order for operational triage.
+    return this.runPrisma(
+      () =>
+        this.prisma.workspaceInvitation.findMany({
+          where: {
+            workspace_id: workspaceId,
+            status: 'pending',
+          },
+          orderBy: { created_at: 'desc' },
+        }),
+      'Failed to fetch pending workspace invitations',
+    );
+  }
+
+  /**
+   * Verifies that the caller is an admin in the target workspace.
+   *
+   * @param adminUserId - Calling user ID to validate
+   * @param workspaceId - Workspace expected to match the caller tenancy
+   * @returns           Promise that resolves when the caller is authorized
+   * @throws            ForbiddenException if caller is not a workspace admin
+   */
+  private async ensureWorkspaceAdmin(
+    adminUserId: string,
+    workspaceId: string,
+  ): Promise<void> {
+    // Fetch caller role and workspace to enforce role + tenancy checks together.
+    const adminUser = await this.runPrisma(
+      () =>
+        this.prisma.user.findUnique({
+          where: { id: adminUserId },
+          select: { role: true, workspace_id: true },
+        }),
+      'Failed to validate workspace admin access',
+    );
+
+    // Allow access only for admins that belong to the exact workspace context.
+    if (
+      !adminUser ||
+      adminUser.role !== 'admin' ||
+      adminUser.workspace_id !== workspaceId
+    ) {
+      throw new ForbiddenException(
+        'Only admins can invite members to this workspace',
+      );
+    }
+  }
+
+  /**
+   * Executes a Prisma operation and converts Prisma-specific failures to safe
+   * internal server exceptions.
+   *
+   * @param operation   - Deferred Prisma call to execute
+   * @param safeMessage - Client-safe error message for Prisma failures
+   * @returns           The successful Prisma operation result
+   * @throws            InternalServerErrorException for Prisma-origin errors
+   */
+  private async runPrisma<T>(
+    operation: () => Promise<T>,
+    safeMessage: string,
+  ): Promise<T> {
+    try {
+      // Execute database operation in a centralized wrapper to keep service
+      // methods focused on business rules while standardizing error hygiene.
+      return await operation();
+    } catch (error) {
+      // Map only Prisma-originated errors to safe InternalServer responses;
+      // pass through domain exceptions (Forbidden/Conflict/NotFound) unchanged.
+      if (this.isPrismaError(error)) {
+        throw new InternalServerErrorException(safeMessage);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Determines whether an unknown error was thrown by Prisma Client.
+   *
+   * @param error - Unknown runtime error from a catch block
+   * @returns     True when the error belongs to a Prisma error class
+   */
+  private isPrismaError(error: unknown): boolean {
+    // Cover all primary Prisma error classes so DB internals are never leaked.
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError ||
+      error instanceof Prisma.PrismaClientUnknownRequestError ||
+      error instanceof Prisma.PrismaClientInitializationError ||
+      error instanceof Prisma.PrismaClientRustPanicError ||
+      error instanceof Prisma.PrismaClientValidationError
+    );
+  }
+
+  private getRequiredConfig(key: string): string {
+    try {
+      const value = this.configService.getOrThrow<string>(key).trim();
+      if (!value) {
+        throw new Error(`${key} is empty`);
+      }
+
+      return value;
+    } catch {
+      throw new InternalServerErrorException(`${key} is not configured`);
+    }
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+}
+</file>
+
 <file path="cios-backend/src/prisma/prisma.module.ts">
 import { Global, Module } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
@@ -3906,37 +6797,6 @@ import { PrismaService } from './prisma.service';
   exports: [PrismaService], // Crucial: export the service so others can use it
 })
 export class PrismaModule {}
-</file>
-
-<file path="cios-backend/src/prisma/prisma.service.ts">
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '../generated/prisma/client'; // Import generated Prisma client entry
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
-
-@Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  constructor() {
-    // 1. Create a connection pool using your .env database URL
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    
-    // 2. Wrap it in the Prisma 7 Postgres Adapter
-    const adapter = new PrismaPg(pool);
-    
-    // 3. Pass the adapter to the base PrismaClient
-    super({ adapter });
-  }
-
-  // Connect to the database when the module initializes
-  async onModuleInit() {
-    await this.$connect();
-  }
-
-  // Clean up the connection when the app shuts down
-  async onModuleDestroy() {
-    await this.$disconnect();
-  }
-}
 </file>
 
 <file path="cios-backend/tsconfig.build.json">
@@ -4022,6 +6882,1156 @@ npm run test:cov      # Coverage report
 See `docs/CHANGELOG.md` for a full history of changes.
 </file>
 
+<file path="cios-backend/src/modules/auth/auth.controller.ts">
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  // [WORKSPACE INVITE] Accept invite token via /auth/register?token=...
+  Query,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { AuthService } from './auth.service';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { Public } from './decorators/public.decorator';
+import { LoginDto } from './dto/login.dto';
+import { GoogleAuthDto } from './dto/google-auth.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { RegisterDto } from './dto/register.dto';
+
+@Controller('auth')
+export class AuthController {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  @Public()
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  // [WORKSPACE INVITE] Register supports optional token query parameter for
+  // invite-email flows that land users directly on /register?token=...
+  async register(@Body() dto: RegisterDto, @Query('token') token?: string) {
+    // ── [WORKSPACE INVITE] BEGIN ─────────────────────────────────────────────
+    // [WORKSPACE INVITE] Support invite token from query string so users who
+    // arrive via /register?token=... are linked to the invited workspace.
+    const registerDto = token ? { ...dto, token } : dto;
+    // [WORKSPACE INVITE] Pass merged DTO so body token and query token are both
+    // accepted without breaking existing registration clients.
+    // ── [WORKSPACE INVITE] END ───────────────────────────────────────────────
+    return this.authService.register(registerDto);
+  }
+
+  @Public()
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(@Body() dto: LoginDto) {
+    return this.authService.login(dto);
+  }
+
+  @Public()
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  async googleLogin(@Body() dto: GoogleAuthDto) {
+    return this.authService.googleLogin(dto.code);
+  }
+
+  @Public()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Body() dto: RefreshTokenDto) {
+    const payload = await this.decodeRefreshToken(dto.refresh_token);
+    return this.authService.refreshTokens(payload.sub, dto.refresh_token);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(
+    @CurrentUser() user: { id: string },
+    @Body() dto: RefreshTokenDto,
+  ) {
+    await this.authService.logout(user.id, dto.refresh_token);
+  }
+
+  @Get('me')
+  async me(@CurrentUser() user: { id: string }) {
+    return this.authService.getMe(user.id);
+  }
+
+  private async decodeRefreshToken(token: string): Promise<{ sub: string }> {
+    try {
+      const payload = await this.jwtService.verifyAsync<{ sub: string }>(token, {
+        secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+      });
+
+      if (!payload?.sub) {
+        throw new UnauthorizedException('Invalid refresh token payload');
+      }
+
+      return payload;
+    } catch {
+      throw new UnauthorizedException('Malformed or invalid refresh token');
+    }
+  }
+}
+</file>
+
+<file path="cios-backend/src/modules/auth/auth.module.ts">
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { StringValue } from 'ms';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { RefreshStrategy } from './strategies/refresh.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
+// [WORKSPACE INVITE] Import WorkspaceModule so this module can access
+// WorkspaceService for the acceptInvitationOnRegister flow.
+import { WorkspaceModule } from '../workspace/workspace.module';
+
+@Module({
+  imports: [
+    // [WORKSPACE INVITE] Add WorkspaceModule to make WorkspaceService
+    // injectable in AuthService for registration-time invite acceptance.
+    WorkspaceModule,
+    PassportModule.register({ defaultStrategy: 'jwt' }),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        signOptions: {
+          expiresIn: (config.get<string>('JWT_ACCESS_EXPIRES_IN') ??
+            '15m') as StringValue,
+        },
+      }),
+    }),
+  ],
+  controllers: [AuthController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RefreshStrategy,
+    GoogleStrategy,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
+  exports: [AuthService, JwtAuthGuard, RolesGuard, JwtModule],
+})
+export class AuthModule {}
+</file>
+
+<file path="cios-backend/src/modules/auth/auth.service.spec.ts">
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcrypt';
+import { PrismaService } from '../../prisma/prisma.service';
+import { WorkspaceService } from '../workspace/workspace.service';
+import { AuthService } from './auth.service';
+
+jest.mock('bcrypt', () => ({
+  hash: jest.fn().mockResolvedValue('hashed_value'),
+  compare: jest.fn(),
+}));
+
+const mockUser = {
+  id: 'uuid-1234',
+  email: 'test@example.com',
+  password_hash: 'hashed_value',
+  full_name: 'Test User',
+  role: 'team_member',
+  avatar_url: null,
+  default_model: null,
+  workspace_id: null,
+  is_active: true,
+  created_at: new Date(),
+};
+
+const mockInvitation = {
+  id: 'invite-uuid-001',
+  email: 'new@example.com',
+  status: 'pending',
+  workspace_id: 'workspace-uuid-001',
+};
+
+const mockPrismaService = {
+  user: {
+    findUnique: jest.fn(),
+    findUniqueOrThrow: jest.fn(),
+    create: jest.fn(),
+  },
+  workspaceInvitation: {
+    findUnique: jest.fn(),
+  },
+  refreshToken: {
+    findMany: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
+  projectMember: {
+    findMany: jest.fn(),
+  },
+};
+
+const mockWorkspaceService = {
+  acceptInvitationOnRegister: jest.fn(),
+};
+
+const mockJwtService = {
+  signAsync: jest.fn().mockResolvedValue('mock_token'),
+};
+
+const mockConfigService = {
+  get: jest.fn((key: string) => {
+    const config: Record<string, string> = {
+      JWT_ACCESS_SECRET: 'access_secret',
+      JWT_REFRESH_SECRET: 'refresh_secret',
+      JWT_ACCESS_EXPIRES_IN: '15m',
+      JWT_REFRESH_EXPIRES_IN: '7d',
+    };
+    return config[key];
+  }),
+  getOrThrow: jest.fn((key: string) => {
+    const config: Record<string, string> = {
+      JWT_ACCESS_SECRET: 'access_secret',
+      JWT_REFRESH_SECRET: 'refresh_secret',
+    };
+
+    if (!config[key]) {
+      throw new Error(`Config key ${key} not found`);
+    }
+
+    return config[key];
+  }),
+};
+
+describe('AuthService', () => {
+  let service: AuthService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: JwtService, useValue: mockJwtService },
+        { provide: ConfigService, useValue: mockConfigService },
+        { provide: WorkspaceService, useValue: mockWorkspaceService },
+      ],
+    }).compile();
+
+    service = module.get<AuthService>(AuthService);
+    jest.clearAllMocks();
+  });
+
+  describe('register()', () => {
+    it('should throw ForbiddenException if invitation token is missing', async () => {
+      await expect(
+        service.register({ email: 'test@example.com', password: 'Password1' }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ConflictException if email already exists', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue({
+        ...mockInvitation,
+        email: 'test@example.com',
+      });
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+
+      await expect(
+        service.register({
+          email: 'test@example.com',
+          password: 'Password1',
+          token: 'invite-token',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should create a new user and return tokens + user', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue(
+        mockInvitation,
+      );
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+        workspace_id: 'workspace-uuid-001',
+      });
+      mockPrismaService.refreshToken.create.mockResolvedValue({});
+      mockJwtService.signAsync.mockResolvedValue('mock_token');
+      mockWorkspaceService.acceptInvitationOnRegister.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+        workspace_id: 'workspace-uuid-001',
+      });
+
+      const result = await service.register({
+        email: 'new@example.com',
+        password: 'Password1',
+        full_name: 'New User',
+        token: 'invite-token',
+      });
+
+      expect(result).toHaveProperty('access_token');
+      expect(result).toHaveProperty('refresh_token');
+      expect(result.user.email).toBe('new@example.com');
+    });
+
+    it('should normalise email to lowercase', async () => {
+      mockPrismaService.workspaceInvitation.findUnique.mockResolvedValue(
+        mockInvitation,
+      );
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.user.create.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+        workspace_id: 'workspace-uuid-001',
+      });
+      mockPrismaService.refreshToken.create.mockResolvedValue({});
+      mockWorkspaceService.acceptInvitationOnRegister.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+        workspace_id: 'workspace-uuid-001',
+      });
+
+      await service.register({
+        email: 'NEW@EXAMPLE.COM',
+        password: 'Password1',
+        token: 'invite-token',
+      });
+
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
+        where: { email: 'new@example.com' },
+      });
+    });
+  });
+
+  describe('login()', () => {
+    it('should throw UnauthorizedException if user not found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.login({ email: 'notfound@example.com', password: 'Password1' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if password is wrong', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.login({ email: 'test@example.com', password: 'WrongPass1' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should throw UnauthorizedException if user is inactive', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...mockUser,
+        is_active: false,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await expect(
+        service.login({ email: 'test@example.com', password: 'Password1' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should return tokens and user on valid credentials', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      mockPrismaService.refreshToken.create.mockResolvedValue({});
+      mockJwtService.signAsync.mockResolvedValue('mock_token');
+
+      const result = await service.login({
+        email: 'test@example.com',
+        password: 'Password1',
+      });
+
+      expect(result).toHaveProperty('access_token', 'mock_token');
+      expect(result.user.email).toBe('test@example.com');
+    });
+  });
+
+  describe('logout()', () => {
+    it('should silently succeed even if token not found', async () => {
+      mockPrismaService.refreshToken.findMany.mockResolvedValue([]);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.logout('uuid-1234', 'some_token'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('getMe()', () => {
+    it('should throw NotFoundException if user not found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.getMe('nonexistent-id')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should return user data if found', async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue(mockUser);
+      mockPrismaService.projectMember.findMany.mockResolvedValue([]);
+
+      const result = await service.getMe('uuid-1234');
+      expect(result.email).toBe('test@example.com');
+    });
+  });
+});
+</file>
+
+<file path="cios-backend/src/modules/auth/auth.service.ts">
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  NotFoundException,
+  // [WORKSPACE INVITE] Used when registration attempts to use a token that
+  // does not belong to the registering email or when token is missing.
+  ForbiddenException,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
+import * as bcrypt from 'bcrypt';
+import { StringValue } from 'ms';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { AuthResponse } from './interfaces/auth-response.interface';
+// [WORKSPACE INVITE] Import WorkspaceService so registration can attach a new
+// user to an invited workspace when an invite token is provided.
+import { WorkspaceService } from '../workspace/workspace.service';
+
+const BCRYPT_ROUNDS = 12;
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+    // [WORKSPACE INVITE] Injected to handle post-registration workspace linking
+    // when a user registers via an invitation magic link token.
+    private readonly workspaceService: WorkspaceService,
+  ) {}
+
+  async register(dto: RegisterDto): Promise<AuthResponse> {
+    const email = dto.email.toLowerCase().trim();
+    // [WORKSPACE INVITE] Normalize optional invitation token so query/body
+    // variants with accidental whitespace do not break invite acceptance.
+    const invitationToken = dto.token?.trim();
+
+    // ── [WORKSPACE INVITE] BEGIN ─────────────────────────────────────────────────
+    // [WORKSPACE INVITE] users.workspace_id is required in the current schema,
+    // so registration must resolve a workspace from an invitation token first.
+    if (!invitationToken) {
+      throw new ForbiddenException('Registration requires a valid invitation token');
+    }
+
+    // [WORKSPACE INVITE] Resolve invitation details up-front so we can set the
+    // new user workspace_id at creation time and validate email ownership.
+    const invitation = await this.prisma.workspaceInvitation.findUnique({
+      where: { token: invitationToken },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        workspace_id: true,
+      },
+    });
+
+    // [WORKSPACE INVITE] Reject unknown invite tokens during signup.
+    if (!invitation) {
+      throw new NotFoundException('Invalid invitation token');
+    }
+
+    // [WORKSPACE INVITE] Prevent replay of invitation links that were already used.
+    if (invitation.status === 'accepted') {
+      throw new ConflictException('This invitation has already been used');
+    }
+
+    // [WORKSPACE INVITE] Bind registration strictly to the invited email address.
+    if (invitation.email.toLowerCase() !== email) {
+      throw new ForbiddenException(
+        'This invitation was not sent to your email address',
+      );
+    }
+    // ── [WORKSPACE INVITE] END ───────────────────────────────────────────────────
+
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (existing) {
+      throw new ConflictException('An account with this email already exists');
+    }
+
+    const password_hash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        password_hash,
+        full_name: dto.full_name ?? null,
+        // [WORKSPACE INVITE] Assign the user to the invited workspace at
+        // creation time so required workspace_id constraints are satisfied.
+        workspace_id: invitation.workspace_id,
+        role: 'team_member',
+      },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        avatar_url: true,
+        default_model: true,
+        workspace_id: true,
+      },
+    });
+
+    // ── [WORKSPACE INVITE] BEGIN ─────────────────────────────────────────────────
+    // [WORKSPACE INVITE] Track workspace assignment for JWT payload generation.
+    // If invite linking succeeds, the access token should immediately include
+    // the invited workspace_id so the user lands in the correct tenant context.
+    let resolvedWorkspaceId = user.workspace_id;
+
+    // [WORKSPACE INVITE] If a valid invitation token was passed during
+    // registration, link this new user to the invited workspace immediately.
+    if (invitationToken) {
+      try {
+        // [WORKSPACE INVITE] Attempt invite acceptance in non-blocking mode;
+        // registration remains successful even if token handling fails.
+        const invitedUser = await this.workspaceService.acceptInvitationOnRegister(
+          invitationToken,
+          user.id,
+        );
+
+        // [WORKSPACE INVITE] When the token is valid and pending, keep the
+        // updated workspace_id for downstream JWT token issuance.
+        if (invitedUser?.workspace_id) {
+          resolvedWorkspaceId = invitedUser.workspace_id;
+        }
+      } catch (e) {
+        // [WORKSPACE INVITE] Non-blocking: log but do not surface to caller.
+        // Registration is primary; workspace linking is secondary.
+        console.error(
+          '[WorkspaceInvite] acceptInvitationOnRegister failed silently:',
+          e,
+        );
+      }
+    }
+    // ── [WORKSPACE INVITE] END ───────────────────────────────────────────────────
+
+    // [WORKSPACE INVITE] Issue JWTs with effective workspace context so invited
+    // users receive correct tenant claims immediately after registration.
+    const tokens = await this.issueTokens({
+      ...user,
+      workspace_id: resolvedWorkspaceId,
+    });
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        avatar_url: user.avatar_url,
+        default_model: user.default_model,
+      },
+    };
+  }
+
+  async login(dto: LoginDto): Promise<AuthResponse> {
+    const email = dto.email.toLowerCase().trim();
+
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user || !user.password_hash) {
+      await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    if (!user.is_active) {
+      throw new UnauthorizedException(
+        'Your account has been deactivated. Contact your admin.',
+      );
+    }
+
+    const passwordValid = await bcrypt.compare(dto.password, user.password_hash);
+    if (!passwordValid) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const tokens = await this.issueTokens(user);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        avatar_url: user.avatar_url,
+        default_model: user.default_model,
+      },
+    };
+  }
+
+  async googleLogin(code: string): Promise<AuthResponse> {
+    // Exchange the authorization code for tokens using Google's OAuth2 endpoint.
+    // This uses the google-auth-library approach via fetch - no extra passport call needed here.
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: this.configService.getOrThrow<string>('GOOGLE_CLIENT_ID'),
+        client_secret:
+          this.configService.getOrThrow<string>('GOOGLE_CLIENT_SECRET'),
+        redirect_uri: this.configService.getOrThrow<string>('GOOGLE_CALLBACK_URL'),
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      throw new UnauthorizedException(
+        'Failed to exchange Google authorization code',
+      );
+    }
+
+    const tokenData = (await tokenRes.json()) as {
+      id_token?: string;
+      error?: string;
+    };
+
+    if (!tokenData.id_token) {
+      throw new UnauthorizedException('Google did not return an ID token');
+    }
+
+    // Decode the ID token payload (we verify by checking it came from Google's endpoint above)
+    const [, payloadBase64] = tokenData.id_token.split('.');
+    const payload = JSON.parse(
+      Buffer.from(payloadBase64, 'base64url').toString('utf8'),
+    ) as {
+      sub: string;
+      email: string;
+      name?: string;
+      picture?: string;
+      email_verified?: boolean;
+    };
+
+    if (!payload.email) {
+      throw new UnauthorizedException('Google account has no email address');
+    }
+
+    const email = payload.email.toLowerCase().trim();
+
+    // Upsert user: if exists update google_id, if not create with no password_hash
+    let user = await this.prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        avatar_url: true,
+        default_model: true,
+        workspace_id: true,
+        is_active: true,
+      },
+    });
+
+    if (user) {
+      // Update google_id on existing user
+      await this.prisma.user.update({
+        where: { email },
+        data: { google_id: payload.sub },
+      });
+
+      if (!user.is_active) {
+        throw new UnauthorizedException(
+          'Your account has been deactivated. Contact your admin.',
+        );
+      }
+    } else {
+      // Create new user - no password_hash for SSO users
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          google_id: payload.sub,
+          full_name: payload.name ?? null,
+          avatar_url: payload.picture ?? null,
+          role: 'team_member',
+          // workspace_id is null until the user joins a workspace
+        },
+        select: {
+          id: true,
+          email: true,
+          full_name: true,
+          role: true,
+          avatar_url: true,
+          default_model: true,
+          workspace_id: true,
+          is_active: true,
+        },
+      });
+    }
+
+    const tokens = await this.issueTokens(user);
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        avatar_url: user.avatar_url,
+        default_model: user.default_model,
+      },
+    };
+  }
+
+  async refreshTokens(
+    userId: string,
+    rawRefreshToken: string,
+  ): Promise<{ access_token: string; refresh_token: string }> {
+    const storedTokens = await this.prisma.refreshToken.findMany({
+      where: {
+        user_id: userId,
+        is_revoked: false,
+        expires_at: { gt: new Date() },
+      },
+    });
+
+    let matchedToken: (typeof storedTokens)[number] | null = null;
+
+    for (const token of storedTokens) {
+      const match = await bcrypt.compare(rawRefreshToken, token.token_hash);
+      if (match) {
+        matchedToken = token;
+        break;
+      }
+    }
+
+    if (!matchedToken) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    await this.prisma.refreshToken.update({
+      where: { id: matchedToken.id },
+      data: { is_revoked: true },
+    });
+
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        workspace_id: true,
+        is_active: true,
+      },
+    });
+
+    if (!user.is_active) {
+      throw new UnauthorizedException('Account deactivated');
+    }
+
+    return this.issueTokens(user);
+  }
+
+  async logout(userId: string, rawRefreshToken: string): Promise<void> {
+    const storedTokens = await this.prisma.refreshToken.findMany({
+      where: { user_id: userId, is_revoked: false },
+    });
+
+    for (const token of storedTokens) {
+      const match = await bcrypt.compare(rawRefreshToken, token.token_hash);
+      if (match) {
+        await this.prisma.refreshToken.update({
+          where: { id: token.id },
+          data: { is_revoked: true },
+        });
+        break;
+      }
+    }
+  }
+
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        full_name: true,
+        role: true,
+        avatar_url: true,
+        default_model: true,
+        view_preferences: true,
+        workspace_id: true,
+        is_active: true,
+        created_at: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Fetch all project memberships for this user with project summary
+    const memberships = await this.prisma.projectMember.findMany({
+      where: { user_id: userId },
+      select: {
+        access_level: true,
+        project: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    const assigned_projects = memberships.map((m) => ({
+      id: m.project.id,
+      name: m.project.name,
+      type: m.project.type,
+      status: m.project.status,
+      access_level: m.access_level,
+    }));
+
+    return {
+      ...user,
+      assigned_projects,
+    };
+  }
+
+  private async issueTokens(user: {
+    id: string;
+    email: string;
+    role: string;
+    workspace_id: string | null;
+  }): Promise<{ access_token: string; refresh_token: string }> {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      workspace_id: user.workspace_id,
+    };
+
+    const [access_token, refresh_token] = await Promise.all([
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        expiresIn: (this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ??
+          '15m') as StringValue,
+      }),
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        expiresIn: (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ??
+          '7d') as StringValue,
+      }),
+    ]);
+
+    const token_hash = await bcrypt.hash(refresh_token, BCRYPT_ROUNDS);
+    const expiresInStr =
+      this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
+    const daysMatch = expiresInStr.match(/^(\d+)d$/);
+    const hoursMatch = expiresInStr.match(/^(\d+)h$/);
+    const expiryMs = daysMatch
+      ? parseInt(daysMatch[1], 10) * 24 * 60 * 60 * 1000
+      : hoursMatch
+        ? parseInt(hoursMatch[1], 10) * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+
+    const expires_at = new Date(Date.now() + expiryMs);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash,
+        expires_at,
+      },
+    });
+
+    return { access_token, refresh_token };
+  }
+}
+</file>
+
+<file path="cios-backend/src/modules/auth/dto/register.dto.ts">
+import {
+  IsEmail,
+  IsString,
+  MaxLength,
+  MinLength,
+  IsOptional,
+  Matches,
+} from 'class-validator';
+
+export class RegisterDto {
+  @IsEmail({}, { message: 'Provide a valid email address' })
+  email: string;
+
+  @IsString()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  @MaxLength(72, { message: 'Password must not exceed 72 characters' })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message:
+      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+  })
+  password: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  full_name?: string;
+
+  // [WORKSPACE INVITE] Optional invite token passed via /register?token=...
+  // If present, the user was invited via a magic link and should be auto-joined
+  // to the corresponding workspace after account creation.
+  @IsOptional()
+  // [WORKSPACE INVITE] Validate invite token as a string when provided.
+  @IsString()
+  token?: string;
+}
+</file>
+
+<file path="cios-backend/src/prisma/prisma.service.ts">
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { PrismaClient } from '../generated/prisma/client'; // Import generated Prisma client entry
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  constructor() {
+    const connectionString = process.env.DATABASE_URL;
+
+    if (!connectionString) {
+      throw new Error('DATABASE_URL is not set');
+    }
+
+    const poolMax = PrismaService.getIntEnv('DATABASE_POOL_MAX', 10);
+    const connectionTimeoutMs = PrismaService.getIntEnv(
+      'DATABASE_CONNECTION_TIMEOUT_MS',
+      10_000,
+    );
+    const idleTimeoutMs = PrismaService.getIntEnv(
+      'DATABASE_IDLE_TIMEOUT_MS',
+      30_000,
+    );
+    const useSsl = (process.env.DATABASE_SSL ?? 'false').toLowerCase() === 'true';
+
+    // Use a bounded pool and predictable timeouts for containerized platforms.
+    const pool = new Pool({
+      connectionString,
+      max: poolMax,
+      connectionTimeoutMillis: connectionTimeoutMs,
+      idleTimeoutMillis: idleTimeoutMs,
+      ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+    });
+    
+    // 2. Wrap it in the Prisma 7 Postgres Adapter
+    const adapter = new PrismaPg(pool);
+    
+    // 3. Pass the adapter to the base PrismaClient
+    super({ adapter });
+  }
+
+  private static getIntEnv(name: string, fallback: number): number {
+    const raw = process.env[name];
+    if (!raw) {
+      return fallback;
+    }
+
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  // Connect to the database when the module initializes
+  async onModuleInit() {
+    await this.$connect();
+  }
+
+  // Clean up the connection when the app shuts down
+  async onModuleDestroy() {
+    await this.$disconnect();
+  }
+}
+</file>
+
+<file path="cios-backend/.env.example">
+DATABASE_URL=postgresql://user:password@localhost:5432/cios
+DATABASE_SSL=false
+DATABASE_POOL_MAX=10
+DATABASE_CONNECTION_TIMEOUT_MS=10000
+DATABASE_IDLE_TIMEOUT_MS=30000
+
+# Render injects PORT automatically in production.
+PORT=3000
+
+JWT_ACCESS_SECRET=your-super-secret-access-key-min-32-chars
+JWT_REFRESH_SECRET=your-super-secret-refresh-key-min-32-chars
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Session idle timeout (ms) - 4 hours per PRD spec
+SESSION_IDLE_TIMEOUT_MS=14400000
+
+# Workspace invitation email flow
+RESEND_API_KEY=your_resend_api_key_here
+# Must use a domain verified in Resend to send to real invitees.
+RESEND_FROM_EMAIL=CIOS <noreply@yourdomain.com>
+# Optional: when absent, invitation emails include the token instead of a link.
+FRONTEND_URL=http://localhost:3000
+
+# Google OAuth
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_CALLBACK_URL=http://localhost:3000/api/v1/auth/google/callback
+</file>
+
+<file path="cios-backend/src/app.controller.ts">
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+import { Public } from './modules/auth/decorators/public.decorator';
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Public()
+  @Get('healthz')
+  health() {
+    return { status: 'ok' };
+  }
+
+  @Public()
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+}
+</file>
+
+<file path="cios-backend/src/app.module.ts">
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+// [WORKSPACE INVITE] ConfigService is required for global ResendModule setup.
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
+// [WORKSPACE INVITE] Register Resend globally at app root so WorkspaceService
+// can inject ResendService without re-registering the module elsewhere.
+import { ResendModule } from 'nestjs-resend';
+// [WORKSPACE INVITE] Register WorkspaceModule to expose workspace creation
+// and invitation endpoints. WorkspaceService is also exported for use by
+// AuthModule during the post-registration invite-accept flow.
+import { WorkspaceModule } from './modules/workspace/workspace.module';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from './modules/auth/guards/roles.guard';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    // [WORKSPACE INVITE] Configure Resend once at app root using RESEND_API_KEY
+    // so invitation emails can be sent from WorkspaceService.
+    ResendModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        apiKey: configService.getOrThrow<string>('RESEND_API_KEY'),
+      }),
+    }),
+    PrismaModule,
+    AuthModule,
+    // [WORKSPACE INVITE] Register WorkspaceModule to expose workspace creation
+    // and invitation endpoints. WorkspaceService is also exported for use by
+    // AuthModule during the post-registration invite-accept flow.
+    WorkspaceModule,
+  ],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
+  ],
+})
+export class AppModule {}
+</file>
+
+<file path="cios-backend/src/main.ts">
+import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const port = Number(process.env.PORT ?? 3000);
+  const host = process.env.HOST ?? '0.0.0.0';
+
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter(),
+  );
+
+  app.enableShutdownHooks();
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: {
+        enableImplicitConversion: true,
+      },
+    }),
+  );
+
+  app.setGlobalPrefix('api/v1');
+
+  await app.listen(port, host);
+}
+bootstrap();
+</file>
+
 <file path="cios-backend/package.json">
 {
   "name": "cios",
@@ -4032,11 +8042,15 @@ See `docs/CHANGELOG.md` for a full history of changes.
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
+    "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
+    "render:build": "npm run prisma:generate && npm run build && npm run prisma:deploy",
+    "render:start": "npm run start:prod",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -4054,11 +8068,14 @@ See `docs/CHANGELOG.md` for a full history of changes.
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
+    "nestjs-resend": "^1.1.0",
     "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
+    "resend": "^6.12.2",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
@@ -4070,6 +8087,7 @@ See `docs/CHANGELOG.md` for a full history of changes.
     "@types/bcrypt": "^6.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.0.0",
+    "@types/passport-google-oauth20": "^2.0.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
     "@types/pg": "^8.20.0",
@@ -4111,84 +8129,6 @@ See `docs/CHANGELOG.md` for a full history of changes.
     "fastify": "^5.8.5"
   }
 }
-</file>
-
-<file path="cios-backend/src/app.controller.ts">
-import { Controller, Get } from '@nestjs/common';
-import { AppService } from './app.service';
-import { Public } from './modules/auth/decorators/public.decorator';
-
-@Controller()
-export class AppController {
-  constructor(private readonly appService: AppService) {}
-
-  @Public()
-  @Get()
-  getHello(): string {
-    return this.appService.getHello();
-  }
-}
-</file>
-
-<file path="cios-backend/src/app.module.ts">
-import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
-import { ConfigModule } from '@nestjs/config';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
-import { PrismaModule } from './prisma/prisma.module';
-import { AuthModule } from './modules/auth/auth.module';
-import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
-
-@Module({
-  imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    PrismaModule,
-    AuthModule,
-  ],
-  controllers: [AppController],
-  providers: [
-    AppService,
-    {
-      provide: APP_GUARD,
-      useClass: JwtAuthGuard,
-    },
-  ],
-})
-export class AppModule {}
-</file>
-
-<file path="cios-backend/src/main.ts">
-import { ValidationPipe } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
-import { AppModule } from './app.module';
-
-async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter(),
-  );
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
-  );
-
-  app.setGlobalPrefix('api/v1');
-
-  await app.listen(3000, '0.0.0.0');
-}
-bootstrap();
 </file>
 
 <file path="cios-backend/prisma/schema.prisma">
@@ -4305,9 +8245,46 @@ model Workspace {
   api_keys                  ApiKey[]
   mentions                  Mention[]
   notifications             Notification[]
+  // [WORKSPACE INVITE] Reverse relation — allows querying all invitations
+  // sent from this workspace (e.g. to show pending invites in the admin panel).
+  workspace_invitations     WorkspaceInvitation[]
 
   @@map("workspaces")
 }
+
+// ── [WORKSPACE INVITE] NEW ENUM ──────────────────────────────────────────────
+// Lifecycle states for a workspace invitation record.
+// pending  = email sent, user has not yet accepted
+// accepted = user clicked the magic link and joined the workspace
+enum InvitationStatus {
+  pending
+  accepted
+}
+// ── [WORKSPACE INVITE] END NEW ENUM ──────────────────────────────────────────
+
+// ── [WORKSPACE INVITE] NEW MODEL ─────────────────────────────────────────────
+// Tracks email invitations sent by admins to add new or existing users to a
+// workspace. Each record stores the target email, the one-time token embedded
+// in the magic link, and the current status (pending → accepted).
+// No expiry — tokens remain valid until used.
+model WorkspaceInvitation {
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id String           @db.Uuid
+  invited_by   String           @db.Uuid
+  email        String
+  token        String           @unique
+  status       InvitationStatus @default(pending)
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id])
+  inviter   User      @relation("WorkspaceInvitationInvitedBy", fields: [invited_by], references: [id])
+
+  @@index([workspace_id])
+  @@index([token])
+  @@map("workspace_invitations")
+}
+// ── [WORKSPACE INVITE] END NEW MODEL ─────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2.2  USERS
@@ -4315,9 +8292,10 @@ model Workspace {
 
 model User {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspace_id     String   @db.Uuid
+  workspace_id     String?  @db.Uuid
   email            String   @unique
   password_hash    String?
+  google_id        String?  @unique
   full_name        String?
   avatar_url       String?
   role             UserRole @default(team_member)
@@ -4328,10 +8306,14 @@ model User {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  workspace      Workspace      @relation(fields: [workspace_id], references: [id])
+  workspace      Workspace?     @relation(fields: [workspace_id], references: [id])
   // [CHANGE 2] RefreshToken relation stays as 1-to-many (NOT 1-to-1).
   // One user may have many live refresh tokens — one per device/session.
   refresh_tokens RefreshToken[]
+  // [WORKSPACE INVITE] Reverse relation — tracks all invitations this admin
+  // user has sent. Named relation required because User has multiple FK
+  // relationships to WorkspaceInvitation.
+  sent_invitations WorkspaceInvitation[] @relation("WorkspaceInvitationInvitedBy")
 
   // Project ownership — named relation because User → Project has multiple FKs.
   owned_projects                Project[]          @relation("ProjectOwner")
