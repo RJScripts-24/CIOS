@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 // [WORKSPACE INVITE] Register Resend globally at app root so WorkspaceService
 // can inject ResendService without re-registering the module elsewhere.
 import { ResendModule } from 'nestjs-resend';
@@ -13,8 +14,8 @@ import { ResendModule } from 'nestjs-resend';
 // and invitation endpoints. WorkspaceService is also exported for use by
 // AuthModule during the post-registration invite-accept flow.
 import { WorkspaceModule } from './modules/workspace/workspace.module';
+import { UsersModule } from './modules/users/users.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from './modules/auth/guards/roles.guard';
 
 @Module({
   imports: [
@@ -29,6 +30,8 @@ import { RolesGuard } from './modules/auth/guards/roles.guard';
     }),
     PrismaModule,
     AuthModule,
+    ApiKeysModule,
+    UsersModule,
     // [WORKSPACE INVITE] Register WorkspaceModule to expose workspace creation
     // and invitation endpoints. WorkspaceService is also exported for use by
     // AuthModule during the post-registration invite-accept flow.
@@ -40,10 +43,6 @@ import { RolesGuard } from './modules/auth/guards/roles.guard';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: RolesGuard,
     },
   ],
 })
