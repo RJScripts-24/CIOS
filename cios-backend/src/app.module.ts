@@ -16,6 +16,9 @@ import { ResendModule } from 'nestjs-resend';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { UsersModule } from './modules/users/users.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from './modules/auth/guards/roles.guard';
+import { ProjectsModule } from './modules/projects/projects.module';
+import { ThreadGroupsModule } from './modules/thread-groups/thread-groups.module';
 
 @Module({
   imports: [
@@ -36,6 +39,8 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     // and invitation endpoints. WorkspaceService is also exported for use by
     // AuthModule during the post-registration invite-accept flow.
     WorkspaceModule,
+    ProjectsModule,
+    ThreadGroupsModule,
   ],
   controllers: [AppController],
   providers: [
@@ -43,6 +48,10 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

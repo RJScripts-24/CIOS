@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { workspaceScope } from '../helpers/workspace-scope.helper';
 import { RequestWithUser } from '../interfaces/request-with-user.interface';
 
 @Injectable()
@@ -28,7 +29,7 @@ export class ProjectMemberGuard implements CanActivate {
     }
 
     const project = await this.prisma.project.findFirst({
-      where: { id: projectId, workspace_id: user.workspace_id },
+      where: { id: projectId, ...workspaceScope(user) },
       select: { id: true, workspace_id: true, owner_id: true },
     });
 

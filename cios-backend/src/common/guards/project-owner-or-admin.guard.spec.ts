@@ -14,6 +14,7 @@ function makeContext(user: object, params: object = {}): ExecutionContext {
 
 const mockPrisma = {
   project: { findFirst: jest.fn() },
+  threadGroup: { findFirst: jest.fn() },
 };
 
 describe('ProjectOwnerOrAdminGuard', () => {
@@ -53,6 +54,7 @@ describe('ProjectOwnerOrAdminGuard', () => {
 
   it('should throw NotFoundException when project not found in workspace', async () => {
     mockPrisma.project.findFirst.mockResolvedValue(null);
+    mockPrisma.threadGroup.findFirst.mockResolvedValue(null);
     const ctx = makeContext(
       { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
       { projectId: 'proj-missing' },
@@ -91,6 +93,55 @@ describe('ProjectOwnerOrAdminGuard', () => {
     const result = await guard.canActivate(ctx);
     expect(result).toBe(true);
     expect(request.project).toEqual(project);
+  });
+
+  it('should query project with a minimal select payload', async () => {
+    const project = { id: 'proj-1', owner_id: 'u1', workspace_id: 'ws1' };
+    mockPrisma.project.findFirst.mockResolvedValue(project);
+
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      { projectId: 'proj-1' },
+    );
+
+    await guard.canActivate(ctx);
+
+    expect(mockPrisma.project.findFirst).toHaveBeenCalledWith({
+      where: { id: 'proj-1', workspace_id: 'ws1' },
+      select: { id: true, owner_id: true, workspace_id: true },
+    });
+  });
+
+  it('should resolve ownership through thread-group id when direct project lookup misses', async () => {
+    mockPrisma.project.findFirst.mockResolvedValue(null);
+    mockPrisma.threadGroup.findFirst.mockResolvedValue({
+      project: { id: 'proj-1', owner_id: 'u1', workspace_id: 'ws1' },
+    });
+
+    const request: any = {
+      user: { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      params: { id: 'thread-group-1' },
+    };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => request }),
+    } as unknown as ExecutionContext;
+
+    const result = await guard.canActivate(ctx);
+
+    expect(result).toBe(true);
+    expect(request.project).toEqual({
+      id: 'proj-1',
+      owner_id: 'u1',
+      workspace_id: 'ws1',
+    });
+    expect(mockPrisma.threadGroup.findFirst).toHaveBeenCalledWith({
+      where: { id: 'thread-group-1', workspace_id: 'ws1' },
+      select: {
+        project: {
+          select: { id: true, owner_id: true, workspace_id: true },
+        },
+      },
+    });
   });
 
   it('should resolve projectId from params.id when params.projectId is absent', async () => {

@@ -228,7 +228,7 @@ export class UsersService {
         workspace_id: workspaceId,
         user_id: userId,
         event_type: eventType,
-        event_detail: eventDetail,
+        event_detail: eventDetail as Prisma.InputJsonValue,
       },
     });
   }

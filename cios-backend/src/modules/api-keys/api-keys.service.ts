@@ -284,15 +284,13 @@ export class ApiKeysService {
         workspace_id: workspaceId,
         user_id: userId,
         event_type: eventType,
-        event_detail: eventDetail,
+        event_detail: eventDetail as Prisma.InputJsonValue,
       },
     });
   }
 
   private stripEncryptedKey(apiKey: ApiKey): ApiKeyResponse {
-    const response = { ...apiKey } as ApiKey & { encrypted_key?: string };
-    delete response.encrypted_key;
-
+    const { encrypted_key: _encryptedKey, ...response } = apiKey;
     return response as ApiKeyResponse;
   }
 
