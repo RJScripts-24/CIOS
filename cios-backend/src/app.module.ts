@@ -19,6 +19,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { ThreadGroupsModule } from './modules/thread-groups/thread-groups.module';
+import { ThreadsModule } from './modules/threads/threads.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { ThreadGroupsModule } from './modules/thread-groups/thread-groups.module
     WorkspaceModule,
     ProjectsModule,
     ThreadGroupsModule,
+    ThreadsModule,
   ],
   controllers: [AppController],
   providers: [

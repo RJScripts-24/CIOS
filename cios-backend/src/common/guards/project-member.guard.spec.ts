@@ -20,6 +20,7 @@ function makeContext(
 
 const mockPrisma = {
   project: { findFirst: jest.fn() },
+  thread: { findFirst: jest.fn() },
   projectMember: { findUnique: jest.fn() },
 };
 
@@ -61,6 +62,7 @@ describe('ProjectMemberGuard', () => {
 
   it('should throw NotFoundException when project does not exist in workspace', async () => {
     mockPrisma.project.findFirst.mockResolvedValue(null);
+    mockPrisma.thread.findFirst.mockResolvedValue(null);
     const ctx = makeContext(
       { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
       { projectId: 'proj-missing' },
@@ -130,5 +132,33 @@ describe('ProjectMemberGuard', () => {
     );
     const result = await guard.canActivate(ctx);
     expect(result).toBe(true);
+  });
+
+  it('should resolve a thread id to its parent project before checking membership', async () => {
+    const membership = {
+      project_id: 'proj-3',
+      user_id: 'u1',
+      access_level: 'edit',
+      workspace_id: 'ws1',
+    };
+
+    mockPrisma.project.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'proj-3',
+        workspace_id: 'ws1',
+        owner_id: 'owner-3',
+      });
+    mockPrisma.thread.findFirst.mockResolvedValue({ project_id: 'proj-3' });
+    mockPrisma.projectMember.findUnique.mockResolvedValue(membership);
+
+    const ctx = makeContext(
+      { sub: 'u1', role: 'team_member', workspace_id: 'ws1' },
+      { id: 'thread-1' },
+    );
+
+    const result = await guard.canActivate(ctx);
+    expect(result).toBe(true);
+    expect(mockPrisma.thread.findFirst).toHaveBeenCalled();
   });
 });

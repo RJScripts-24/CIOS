@@ -28,16 +28,32 @@ export class ProjectMemberGuard implements CanActivate {
       throw new ForbiddenException('User has no workspace assigned');
     }
 
-    const project = await this.prisma.project.findFirst({
+    let resolvedProjectId = projectId;
+    let project = await this.prisma.project.findFirst({
       where: { id: projectId, ...workspaceScope(user) },
       select: { id: true, workspace_id: true, owner_id: true },
     });
+
+    if (!project) {
+      const thread = await this.prisma.thread.findFirst({
+        where: { id: projectId, ...workspaceScope(user) },
+        select: { project_id: true },
+      });
+
+      if (thread) {
+        resolvedProjectId = thread.project_id;
+        project = await this.prisma.project.findFirst({
+          where: { id: resolvedProjectId, ...workspaceScope(user) },
+          select: { id: true, workspace_id: true, owner_id: true },
+        });
+      }
+    }
 
     if (!project) throw new NotFoundException('Project not found');
 
     const membership = await this.prisma.projectMember.findUnique({
       where: {
-        project_id_user_id: { project_id: projectId, user_id: user.sub },
+        project_id_user_id: { project_id: resolvedProjectId, user_id: user.sub },
       },
     });
 
