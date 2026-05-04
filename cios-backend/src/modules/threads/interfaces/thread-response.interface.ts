@@ -6,6 +6,7 @@ export interface ThreadResponse {
   title: string;
   purpose_tag: string | null;
   status: string | null;
+  access_level: string;
   system_prompt: string | null;
   last_model_used: string | null;
   created_by: string;

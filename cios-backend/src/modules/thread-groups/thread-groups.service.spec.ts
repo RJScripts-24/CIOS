@@ -23,6 +23,9 @@ const mockPrismaService = {
     updateMany: jest.fn(),
   },
   $transaction: jest.fn(),
+  auditLog: {
+    create: jest.fn(),
+  },
 };
 
 describe('ThreadGroupsService', () => {
@@ -201,12 +204,24 @@ describe('ThreadGroupsService', () => {
         }),
       );
       expect(mockPrismaService.threadGroup.update).toHaveBeenCalled();
+      expect(mockPrismaService.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            event_type: 'thread_group_renamed',
+            project_id: 'project-1',
+            event_detail: { group_id: 'tg-1', project_id: 'project-1' },
+          }),
+        }),
+      );
     });
   });
 
   describe('deleteThreadGroup()', () => {
     it('sets group_id = null on all threads in the group before deleting (in a transaction)', async () => {
-      mockPrismaService.threadGroup.findFirst.mockResolvedValue({ id: 'tg-1' });
+      mockPrismaService.threadGroup.findFirst.mockResolvedValue({
+        id: 'tg-1',
+        project_id: 'project-1',
+      });
       mockPrismaService.thread.updateMany.mockResolvedValue({ count: 3 });
       mockPrismaService.threadGroup.delete.mockResolvedValue({ id: 'tg-1' });
 
@@ -221,10 +236,26 @@ describe('ThreadGroupsService', () => {
       expect(mockPrismaService.thread.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
         mockPrismaService.threadGroup.delete.mock.invocationCallOrder[0],
       );
+      expect(mockPrismaService.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            event_type: 'thread_group_deleted',
+            project_id: 'project-1',
+            event_detail: {
+              group_id: 'tg-1',
+              project_id: 'project-1',
+              unassigned_thread_count: 3,
+            },
+          }),
+        }),
+      );
     });
 
     it('returns unassigned_thread_count equal to the number of threads that were updated', async () => {
-      mockPrismaService.threadGroup.findFirst.mockResolvedValue({ id: 'tg-1' });
+      mockPrismaService.threadGroup.findFirst.mockResolvedValue({
+        id: 'tg-1',
+        project_id: 'project-1',
+      });
       mockPrismaService.thread.updateMany.mockResolvedValue({ count: 5 });
       mockPrismaService.threadGroup.delete.mockResolvedValue({ id: 'tg-1' });
 

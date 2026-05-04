@@ -67,8 +67,7 @@ export class ListThreadsDto {
   sort_by?: string;
 
   /**
-   * Reserved for future use — access_level was removed from the Thread model.
-   * Accepted in the DTO for forward-compatibility but ignored in the service.
+   * Query flag reserved for admins; visibility for private threads is enforced in SQL.
    */
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)

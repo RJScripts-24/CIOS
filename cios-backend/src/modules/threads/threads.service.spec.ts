@@ -4,6 +4,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ThreadsService } from './threads.service';
 
@@ -26,6 +27,7 @@ const mockThread = {
   title: 'Test Thread',
   purpose_tag: null,
   status: 'active',
+  access_level: 'team',
   system_prompt: null,
   last_model_used: null,
   created_by: mockUser.sub,
@@ -132,6 +134,10 @@ describe('ThreadsService', () => {
           where: expect.objectContaining({
             workspace_id: WORKSPACE_ID,
             project_id: PROJECT_ID,
+            OR: [
+              { access_level: 'team' },
+              { access_level: 'private', created_by: mockUser.sub },
+            ],
           }),
         }),
       );
@@ -165,7 +171,8 @@ describe('ThreadsService', () => {
       );
 
       const args = mockPrismaService.thread.findMany.mock.calls[0][0];
-      expect(args.where).toEqual(
+      const where = args.where as Record<string, unknown>;
+      expect(where).toEqual(
         expect.objectContaining({
           title: { contains: 'hello', mode: 'insensitive' },
           purpose_tag: { in: ['Dev', 'Copy'] },
@@ -173,8 +180,132 @@ describe('ThreadsService', () => {
           last_model_used: 'gpt-4.1',
           status: 'active',
           group_id: 'group-uuid',
+          workspace_id: WORKSPACE_ID,
+          project_id: PROJECT_ID,
         }),
       );
+    });
+  });
+
+  describe('listThreads — access_level enforcement', () => {
+    /** Simulates DB visibility for threads returned by listThreads' WHERE clause. */
+    function threadPassesAccessWhere(
+      row: { access_level: string; created_by: string },
+      where: Prisma.ThreadWhereInput,
+      userSub: string,
+      isAdmin: boolean,
+    ): boolean {
+      if (isAdmin) return true;
+      const orClause = where.OR;
+      if (!orClause?.length) return true;
+      return orClause.some((cond) => {
+        if ('AND' in cond || 'NOT' in cond || 'OR' in cond) return false;
+        const c = cond as { access_level?: string; created_by?: string };
+        if (c.access_level === 'team') return row.access_level === 'team';
+        if (c.access_level === 'private' && c.created_by === userSub) {
+          return row.access_level === 'private' && row.created_by === userSub;
+        }
+        return false;
+      });
+    }
+
+    beforeEach(() => {
+      mockPrismaService.thread.findMany.mockImplementation(({ where }: { where: Prisma.ThreadWhereInput }) => {
+        const candidates = [
+          { ...mockThread, id: 't-team', access_level: 'team', created_by: 'other-user' },
+          {
+            ...mockThread,
+            id: 't-private-other',
+            access_level: 'private',
+            created_by: 'other-user',
+          },
+          { ...mockThread, id: 't-private-own', access_level: 'private', created_by: mockUser.sub },
+        ].map((t) => ({
+          ...t,
+          total_cost: '0',
+          thread_property_values: [],
+        }));
+
+        const isAdmin = mockUser.role === 'admin';
+        const filtered = candidates.filter((t) =>
+          threadPassesAccessWhere(
+            { access_level: t.access_level!, created_by: t.created_by! },
+            where,
+            mockUser.sub,
+            isAdmin,
+          ),
+        );
+        return Promise.resolve(filtered);
+      });
+      mockPrismaService.threadGroup.findMany.mockResolvedValue([]);
+    });
+
+    it('should not include private threads created by another user for a non-admin', async () => {
+      const spy = jest.spyOn(mockPrismaService.thread, 'findMany');
+
+      const result = await service.listThreads(PROJECT_ID, {}, mockUser as any);
+
+      expect(spy.mock.calls[0][0].where).toMatchObject({
+        workspace_id: WORKSPACE_ID,
+        project_id: PROJECT_ID,
+        OR: [
+          { access_level: 'team' },
+          { access_level: 'private', created_by: mockUser.sub },
+        ],
+      });
+      type GroupRow = { threads?: { id: string }[] };
+      const groupRows = result.groups as GroupRow[];
+      const ids = [
+        ...groupRows.flatMap((g) => g.threads ?? []),
+        ...result.ungrouped_threads,
+      ].map((t) => t.id);
+      expect(ids).toContain('t-team');
+      expect(ids).not.toContain('t-private-other');
+
+      spy.mockRestore();
+    });
+
+    it("should include all threads for admin users regardless of access_level", async () => {
+      const admin = { ...mockUser, role: 'admin' as const };
+      mockPrismaService.thread.findMany.mockImplementation(({ where }: { where: Prisma.ThreadWhereInput }) => {
+        const candidates = [
+          { ...mockThread, id: 't-team', access_level: 'team', created_by: 'other-user' },
+          {
+            ...mockThread,
+            id: 't-private-other',
+            access_level: 'private',
+            created_by: 'other-user',
+          },
+        ].map((t) => ({ ...t, total_cost: '0', thread_property_values: [] }));
+        const filtered = candidates.filter((t) =>
+          threadPassesAccessWhere(
+            { access_level: t.access_level!, created_by: t.created_by! },
+            where,
+            admin.sub,
+            true,
+          ),
+        );
+        return Promise.resolve(filtered);
+      });
+
+      const result = await service.listThreads(PROJECT_ID, {}, admin as any);
+
+      const args = mockPrismaService.thread.findMany.mock.calls[0][0];
+      expect(args.where).not.toHaveProperty('OR');
+
+      type GroupRow = { threads?: { id: string }[] };
+      const groupRows = result.groups as GroupRow[];
+      const ids = [
+        ...groupRows.flatMap((g) => g.threads ?? []),
+        ...result.ungrouped_threads,
+      ].map((t) => t.id);
+      expect(ids).toContain('t-private-other');
+      expect(ids).toContain('t-team');
+    });
+
+    it("should include user's own private threads", async () => {
+      const result = await service.listThreads(PROJECT_ID, {}, mockUser as any);
+      expect(result.ungrouped_threads.map((t: { id: string }) => t.id)).toContain('t-private-own');
     });
   });
 
@@ -205,6 +336,7 @@ describe('ThreadsService', () => {
             project_id: PROJECT_ID,
             workspace_id: WORKSPACE_ID,
             created_by: mockUser.sub,
+            access_level: 'team',
           }),
         }),
       );
@@ -341,8 +473,8 @@ describe('ThreadsService', () => {
   describe('upsertPropertyValues()', () => {
     it('upserts all property values in a transaction and returns the updated list', async () => {
       mockPrismaService.thread.findFirst.mockResolvedValue({
-        id: THREAD_ID,
-        project_id: PROJECT_ID,
+        ...mockThread,
+        thread_property_values: [],
       });
       mockPrismaService.projectCustomProperty.findMany.mockResolvedValue([
         { id: 'prop-1', property_type: 'text' },
@@ -388,8 +520,8 @@ describe('ThreadsService', () => {
 
     it('throws NotFoundException if the property is not on the project', async () => {
       mockPrismaService.thread.findFirst.mockResolvedValue({
-        id: THREAD_ID,
-        project_id: PROJECT_ID,
+        ...mockThread,
+        thread_property_values: [],
       });
       mockPrismaService.projectCustomProperty.findMany.mockResolvedValue([]);
 
@@ -404,8 +536,8 @@ describe('ThreadsService', () => {
 
     it('throws UnprocessableEntityException when a value has the wrong type', async () => {
       mockPrismaService.thread.findFirst.mockResolvedValue({
-        id: THREAD_ID,
-        project_id: PROJECT_ID,
+        ...mockThread,
+        thread_property_values: [],
       });
       mockPrismaService.projectCustomProperty.findMany.mockResolvedValue([
         { id: 'prop-1', property_type: 'number' },
@@ -422,8 +554,8 @@ describe('ThreadsService', () => {
 
     it('validates property values without performing access checks', async () => {
       mockPrismaService.thread.findFirst.mockResolvedValue({
-        id: THREAD_ID,
-        project_id: PROJECT_ID,
+        ...mockThread,
+        thread_property_values: [],
       });
       mockPrismaService.projectCustomProperty.findMany.mockResolvedValue([
         { id: 'prop-1', property_type: 'text' },

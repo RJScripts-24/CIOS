@@ -85,6 +85,7 @@ const mockPrismaService = {
   projectMember: {
     create: jest.fn(),
     upsert: jest.fn(),
+    findUnique: jest.fn(),
     createMany: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
@@ -442,7 +443,10 @@ describe('ProjectsService', () => {
 
       expect(mockPrismaService.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ event_type: 'project_created' }),
+          data: expect.objectContaining({
+            event_type: 'project_created',
+            project_id: 'project-1',
+          }),
         }),
       );
     });
@@ -525,6 +529,7 @@ describe('ProjectsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             event_type: 'project_updated',
+            project_id: 'project-1',
             event_detail: expect.objectContaining({
               changed_fields: ['name', 'status'],
             }),
@@ -600,7 +605,10 @@ describe('ProjectsService', () => {
       expect(mockPrismaService.project.deleteMany).toHaveBeenCalled();
       expect(mockPrismaService.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ event_type: 'project_deleted' }),
+          data: expect.objectContaining({
+            event_type: 'project_deleted',
+            project_id: 'project-1',
+          }),
         }),
       );
       expect(result).toEqual({ message: 'Project deleted' });
@@ -617,6 +625,7 @@ describe('ProjectsService', () => {
 
   describe('addMember()', () => {
     it('throws BadRequestException when the user being added is in a different workspace', async () => {
+      mockPrismaService.projectMember.findUnique.mockResolvedValue(null);
       mockPrismaService.user.findFirst.mockResolvedValue(null);
 
       await expect(
@@ -629,6 +638,7 @@ describe('ProjectsService', () => {
     });
 
     it('uses upsert with project_id_user_id compound key', async () => {
+      mockPrismaService.projectMember.findUnique.mockResolvedValue(null);
       mockPrismaService.user.findFirst.mockResolvedValue({ id: 'user-2' });
       mockPrismaService.projectMember.upsert.mockResolvedValue({
         project_id: 'project-1',
@@ -653,6 +663,7 @@ describe('ProjectsService', () => {
     });
 
     it('creates new member row when membership does not exist', async () => {
+      mockPrismaService.projectMember.findUnique.mockResolvedValue(null);
       mockPrismaService.user.findFirst.mockResolvedValue({ id: 'user-2' });
       mockPrismaService.projectMember.upsert.mockResolvedValue({
         project_id: 'project-1',
@@ -671,6 +682,11 @@ describe('ProjectsService', () => {
     });
 
     it('updates access_level when membership already exists', async () => {
+      mockPrismaService.projectMember.findUnique.mockResolvedValue({
+        project_id: 'project-1',
+        user_id: 'user-2',
+        access_level: 'edit',
+      });
       mockPrismaService.user.findFirst.mockResolvedValue({ id: 'user-2' });
       mockPrismaService.projectMember.upsert.mockResolvedValue({
         project_id: 'project-1',
@@ -686,6 +702,66 @@ describe('ProjectsService', () => {
       );
 
       expect(result.access_level).toBe('read_only');
+    });
+
+    it('writes project_member_added audit when membership is new', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue({ id: 'user-2' });
+      mockPrismaService.projectMember.findUnique.mockResolvedValue(null);
+      mockPrismaService.projectMember.upsert.mockResolvedValue({
+        project_id: 'project-1',
+        user_id: 'user-2',
+        access_level: 'edit',
+        assigned_at: new Date('2026-04-01T00:00:00Z'),
+      });
+
+      await service.addMember(
+        'project-1',
+        { user_id: 'user-2', access_level: 'edit' } as any,
+        mockUser as any,
+      );
+
+      expect(mockPrismaService.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            event_type: 'project_member_added',
+            project_id: 'project-1',
+            event_detail: {
+              project_id: 'project-1',
+              user_id: 'user-2',
+              access_level: 'edit',
+            },
+          }),
+        }),
+      );
+    });
+
+    it('writes project_member_updated audit when membership already existed', async () => {
+      mockPrismaService.user.findFirst.mockResolvedValue({ id: 'user-2' });
+      mockPrismaService.projectMember.findUnique.mockResolvedValue({
+        project_id: 'project-1',
+        user_id: 'user-2',
+        access_level: 'edit',
+      });
+      mockPrismaService.projectMember.upsert.mockResolvedValue({
+        project_id: 'project-1',
+        user_id: 'user-2',
+        access_level: 'read_only',
+        assigned_at: new Date('2026-04-01T00:00:00Z'),
+      });
+
+      await service.addMember(
+        'project-1',
+        { user_id: 'user-2', access_level: 'read_only' } as any,
+        mockUser as any,
+      );
+
+      expect(mockPrismaService.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            event_type: 'project_member_updated',
+          }),
+        }),
+      );
     });
   });
 
@@ -720,6 +796,20 @@ describe('ProjectsService', () => {
         'user-2',
         { access_level: 'edit' } as any,
         mockUser as any,
+      );
+
+      expect(mockPrismaService.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            event_type: 'project_member_updated',
+            project_id: 'project-1',
+            event_detail: {
+              project_id: 'project-1',
+              user_id: 'user-2',
+              access_level: 'edit',
+            },
+          }),
+        }),
       );
 
       expect(result).toEqual({
@@ -768,6 +858,15 @@ describe('ProjectsService', () => {
       );
 
       expect(mockPrismaService.projectMember.delete).toHaveBeenCalled();
+      expect(mockPrismaService.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            event_type: 'project_member_removed',
+            project_id: 'project-1',
+            event_detail: { project_id: 'project-1', user_id: 'user-2' },
+          }),
+        }),
+      );
       expect(result).toEqual({ message: 'Member removed' });
     });
 
@@ -822,6 +921,7 @@ describe('ProjectsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             event_type: 'project_ownership_transferred',
+            project_id: 'project-1',
             event_detail: {
               project_id: 'project-1',
               old_owner_id: 'owner-1',

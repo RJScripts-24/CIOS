@@ -273,6 +273,7 @@ export class ProjectsService {
           member_count: dto.members?.length ?? 0,
         },
         tx,
+        project.id,
       );
 
       return project;
@@ -373,6 +374,7 @@ export class ProjectsService {
         'project_updated',
         { project_id: id, changed_fields: changedFields },
         tx,
+        id,
       );
     });
 
@@ -397,6 +399,7 @@ export class ProjectsService {
         'project_archived',
         { project_id: id },
         tx,
+        id,
       );
     });
 
@@ -429,6 +432,7 @@ export class ProjectsService {
         'project_deleted',
         { project_id: project.id, project_name: project.name, deleted_by: user.sub },
         tx,
+        project.id,
       );
     });
 
@@ -452,7 +456,13 @@ export class ProjectsService {
       );
     }
 
-    return this.prisma.projectMember.upsert({
+    const existingMembership = await this.prisma.projectMember.findUnique({
+      where: {
+        project_id_user_id: { project_id: id, user_id: dto.user_id },
+      },
+    });
+
+    const member = await this.prisma.projectMember.upsert({
       where: {
         project_id_user_id: { project_id: id, user_id: dto.user_id },
       },
@@ -467,6 +477,20 @@ export class ProjectsService {
         assigned_by: user.sub,
       },
     });
+
+    await this.writeAuditLog(
+      user,
+      existingMembership ? 'project_member_updated' : 'project_member_added',
+      {
+        project_id: id,
+        user_id: dto.user_id,
+        access_level: dto.access_level,
+      },
+      this.prisma,
+      id,
+    );
+
+    return member;
   }
 
   async updateMemberAccess(
@@ -488,12 +512,22 @@ export class ProjectsService {
       throw new NotFoundException('Membership not found');
     }
 
-    return this.prisma.projectMember.update({
+    const updated = await this.prisma.projectMember.update({
       where: {
         project_id_user_id: { project_id: id, user_id: userId },
       },
       data: { access_level: dto.access_level as AccessLevel },
     });
+
+    await this.writeAuditLog(
+      user,
+      'project_member_updated',
+      { project_id: id, user_id: userId, access_level: dto.access_level },
+      this.prisma,
+      id,
+    );
+
+    return updated;
   }
 
   async removeMember(
@@ -530,6 +564,14 @@ export class ProjectsService {
         project_id_user_id: { project_id: id, user_id: userId },
       },
     });
+
+    await this.writeAuditLog(
+      user,
+      'project_member_removed',
+      { project_id: id, user_id: userId },
+      this.prisma,
+      id,
+    );
 
     return { message: 'Member removed' };
   }
@@ -578,6 +620,7 @@ export class ProjectsService {
           new_owner_id: dto.new_owner_id,
         },
         tx,
+        id,
       );
     });
 
@@ -616,7 +659,7 @@ export class ProjectsService {
       );
     }
 
-    return this.prisma.projectCustomProperty.create({
+    const property = await this.prisma.projectCustomProperty.create({
       data: {
         project_id: id,
         workspace_id: workspaceId,
@@ -627,6 +670,16 @@ export class ProjectsService {
         sort_order: dto.sort_order ?? 0,
       },
     });
+
+    await this.writeAuditLog(
+      user,
+      'custom_property_created',
+      { project_id: id, property_id: property.id },
+      this.prisma,
+      id,
+    );
+
+    return property;
   }
 
   async updateCustomProperty(
@@ -652,10 +705,20 @@ export class ProjectsService {
     if (dto.options !== undefined) data.options = dto.options;
     if (dto.sort_order !== undefined) data.sort_order = dto.sort_order;
 
-    return this.prisma.projectCustomProperty.update({
+    const updated = await this.prisma.projectCustomProperty.update({
       where: { id: propertyId },
       data,
     });
+
+    await this.writeAuditLog(
+      user,
+      'custom_property_updated',
+      { project_id: id, property_id: propertyId },
+      this.prisma,
+      id,
+    );
+
+    return updated;
   }
 
   async deleteCustomProperty(
@@ -676,6 +739,14 @@ export class ProjectsService {
       });
 
       await tx.projectCustomProperty.delete({ where: { id: propertyId } });
+
+      await this.writeAuditLog(
+        user,
+        'custom_property_deleted',
+        { project_id: id, property_id: propertyId },
+        tx,
+        id,
+      );
     });
 
     return { message: 'Property deleted' };
@@ -686,16 +757,22 @@ export class ProjectsService {
     eventType: string,
     eventDetail: Record<string, unknown>,
     prisma: Prisma.TransactionClient = this.prisma,
+    projectId?: string | null,
   ): Promise<void> {
     const workspaceId = user.workspace_id;
     if (!workspaceId) {
       throw new ForbiddenException('User has no workspace assigned');
     }
 
+    const resolvedProjectId =
+      projectId ??
+      (typeof eventDetail.project_id === 'string' ? eventDetail.project_id : null);
+
     await prisma.auditLog.create({
       data: {
         workspace_id: workspaceId,
         user_id: user.sub,
+        project_id: resolvedProjectId ?? undefined,
         event_type: eventType,
         event_detail: eventDetail as Prisma.InputJsonValue,
       },

@@ -59,6 +59,7 @@ export class ThreadsService {
       title: thread.title,
       purpose_tag: thread.purpose_tag ?? null,
       status: thread.status ?? null,
+      access_level: thread.access_level ?? 'team',
       system_prompt: thread.system_prompt ?? null,
       last_model_used: thread.last_model_used ?? null,
       created_by: thread.created_by,
@@ -100,6 +101,14 @@ export class ThreadsService {
 
     if (!thread) {
       throw new NotFoundException('Thread not found');
+    }
+
+    if (
+      thread.access_level === 'private' &&
+      user.role !== 'admin' &&
+      thread.created_by !== user.sub
+    ) {
+      throw new ForbiddenException('You do not have access to this thread');
     }
 
     return thread;
@@ -172,6 +181,18 @@ export class ThreadsService {
     if (dto.group_id) {
       where.group_id = dto.group_id;
     }
+
+    const accessFilter: Prisma.ThreadWhereInput =
+      user.role === 'admin'
+        ? {}
+        : {
+            OR: [
+              { access_level: 'team' },
+              { access_level: 'private', created_by: user.sub },
+            ],
+          };
+
+    Object.assign(where, accessFilter);
 
     const sortMap: Record<string, Prisma.ThreadOrderByWithRelationInput> = {
       last_active: { last_active_at: 'desc' },
@@ -264,6 +285,7 @@ export class ThreadsService {
           system_prompt: dto.system_prompt,
           group_id: dto.group_id ?? null,
           status: 'active',
+          access_level: dto.access_level ?? 'team',
         },
         include: {
           thread_property_values: {
@@ -333,6 +355,7 @@ export class ThreadsService {
     if (dto.status !== undefined) data.status = dto.status;
     if ('group_id' in dto) data.group_id = dto.group_id ?? null;
     if (dto.system_prompt !== undefined) data.system_prompt = dto.system_prompt;
+    if (dto.access_level !== undefined) data.access_level = dto.access_level;
 
     if (Object.keys(data).length === 0) {
       return this.mapThreadResponse(current);
@@ -356,7 +379,7 @@ export class ThreadsService {
     dto: UpsertPropertyValuesDto,
     user: JwtPayload,
   ): Promise<{ thread_id: string; updated_values: unknown[] }> {
-    const thread = await this.loadThreadSummaryWithAccess(threadId, user);
+    const thread = await this.loadThreadWithAccess(threadId, user);
 
     const propertyIds = dto.values.map((value) => value.property_id);
     const properties = await this.prisma.projectCustomProperty.findMany({

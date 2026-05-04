@@ -105,7 +105,17 @@ export class ThreadGroupsService {
 
     if (Object.keys(data).length === 0) return group;
 
-    return this.prisma.threadGroup.update({ where: { id }, data });
+    const updated = await this.prisma.threadGroup.update({ where: { id }, data });
+
+    await this.writeAuditLog(
+      user,
+      'thread_group_renamed',
+      { group_id: id, project_id: group.project_id },
+      this.prisma,
+      group.project_id,
+    );
+
+    return updated;
   }
 
   async deleteThreadGroup(id: string, user: JwtPayload) {
@@ -115,7 +125,7 @@ export class ThreadGroupsService {
 
     const group = await this.prisma.threadGroup.findFirst({
       where: { ...workspaceScope(user), id },
-      select: { id: true },
+      select: { id: true, project_id: true },
     });
 
     if (!group) throw new NotFoundException('Thread group not found');
@@ -128,7 +138,46 @@ export class ThreadGroupsService {
 
       await tx.threadGroup.delete({ where: { id } });
 
+      await this.writeAuditLog(
+        user,
+        'thread_group_deleted',
+        {
+          group_id: id,
+          project_id: group.project_id,
+          unassigned_thread_count,
+        },
+        tx,
+        group.project_id,
+      );
+
       return { message: 'Group deleted', unassigned_thread_count };
+    });
+  }
+
+  private async writeAuditLog(
+    user: JwtPayload,
+    eventType: string,
+    eventDetail: Record<string, unknown>,
+    prisma: Prisma.TransactionClient = this.prisma,
+    projectId?: string | null,
+  ): Promise<void> {
+    const workspaceId = user.workspace_id;
+    if (!workspaceId) {
+      throw new ForbiddenException('User has no workspace assigned');
+    }
+
+    const resolvedProjectId =
+      projectId ??
+      (typeof eventDetail.project_id === 'string' ? eventDetail.project_id : null);
+
+    await prisma.auditLog.create({
+      data: {
+        workspace_id: workspaceId,
+        user_id: user.sub,
+        project_id: resolvedProjectId ?? undefined,
+        event_type: eventType,
+        event_detail: eventDetail as Prisma.InputJsonValue,
+      },
     });
   }
 }

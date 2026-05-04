@@ -15,6 +15,10 @@ export class UpdateThreadDto {
   status?: string;
 
   @IsOptional()
+  @IsIn(['team', 'private'])
+  access_level?: 'team' | 'private';
+
+  @IsOptional()
   @IsUUID()
   group_id?: string | null;
 

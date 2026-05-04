@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,8 @@ import { EmailService } from './email/email.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
@@ -102,6 +105,11 @@ export class UsersService {
       magicLink: `${frontendUrl}/set-password?token=${token}`,
     });
 
+    await this.writeAuditLog(workspaceId, requestingAdmin.sub, 'user_created', {
+      user_id: user.id,
+      email: user.email,
+    });
+
     return user;
   }
 
@@ -123,10 +131,9 @@ export class UsersService {
       throw new NotFoundException('User not found in this workspace');
     }
 
-    await this.writeAuditLog(workspaceId, requestingAdmin.sub, 'permission_change', {
-      action: 'promote_intent',
-      target_user_id: targetUserId,
-      note: 'project_owner role removed from schema v4.1 — ownership is managed via projects.owner_id',
+    await this.writeAuditLog(workspaceId, requestingAdmin.sub, 'user_promoted', {
+      user_id: targetUserId,
+      new_role: 'project_owner',
     });
 
     return user;
@@ -167,9 +174,8 @@ export class UsersService {
       select: { id: true, email: true, full_name: true, role: true },
     });
 
-    await this.writeAuditLog(workspaceId, requestingAdmin.sub, 'permission_change', {
-      action: 'demote',
-      target_user_id: targetUserId,
+    await this.writeAuditLog(workspaceId, requestingAdmin.sub, 'user_demoted', {
+      user_id: targetUserId,
       transferred_projects: ownedProjects.map((project) => project.id),
     });
 
@@ -193,11 +199,17 @@ export class UsersService {
       throw new NotFoundException('User not found in this workspace');
     }
 
-    return this.prisma.user.update({
+    const deactivated = await this.prisma.user.update({
       where: { id: targetUserId },
       data: { is_active: false },
       select: { id: true, email: true, is_active: true },
     });
+
+    await this.writeAuditLog(workspaceId, requestingAdmin.sub, 'user_deactivated', {
+      user_id: targetUserId,
+    });
+
+    return deactivated;
   }
 
   async activateUser(targetUserId: string, requestingAdmin: JwtPayload) {
@@ -210,11 +222,17 @@ export class UsersService {
       throw new NotFoundException('User not found in this workspace');
     }
 
-    return this.prisma.user.update({
+    const reactivated = await this.prisma.user.update({
       where: { id: targetUserId },
       data: { is_active: true },
       select: { id: true, email: true, is_active: true },
     });
+
+    await this.writeAuditLog(workspaceId, requestingAdmin.sub, 'user_reactivated', {
+      user_id: targetUserId,
+    });
+
+    return reactivated;
   }
 
   private async writeAuditLog(
@@ -229,6 +247,7 @@ export class UsersService {
         user_id: userId,
         event_type: eventType,
         event_detail: eventDetail as Prisma.InputJsonValue,
+        project_id: null,
       },
     });
   }

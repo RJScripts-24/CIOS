@@ -24,14 +24,9 @@ export class CreateThreadDto {
   @IsString()
   system_prompt?: string;
 
-  /**
-   * access_level field is accepted for forward-compatibility with the frontend
-   * but is not persisted — the Thread schema does not have this column in the
-   * current migration state.
-   */
   @IsOptional()
   @IsIn(['team', 'private'])
-  access_level?: string;
+  access_level?: 'team' | 'private';
 
   @IsOptional()
   @IsUUID()
